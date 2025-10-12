@@ -3,8 +3,24 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
-import { Card } from '@/components/ui/Card';
-import { Table } from '@/components/ui/Table';
+import { 
+  Card, 
+  CardHeader, 
+  CardContent, 
+  CardFooter,
+  CardTitle,
+  CardDescription
+} from '@/components/ui/Card';
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableFooter,
+  TableHead,
+  TableRow,
+  TableCell,
+  TableCaption,
+} from '@/components/ui/Table';
 import { Button } from '@/components/ui/Button';
 
 interface Transaction {
@@ -14,6 +30,9 @@ interface Transaction {
   payment_method: string;
   status: string;
   created_at: string;
+  cashier?: {
+    email: string;
+  };
 }
 
 interface SalesReport {
@@ -28,6 +47,7 @@ export default function Reports() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [salesReport, setSalesReport] = useState<SalesReport[]>([]);
   const [dateRange, setDateRange] = useState<'today' | 'week' | 'month'>('week');
+  const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -48,60 +68,121 @@ export default function Reports() {
     checkUser();
   }, [dateRange, router]);
 
+  const getDateRangeFilter = () => {
+    const now = new Date();
+    let startDate = new Date();
+
+    switch (dateRange) {
+      case 'today':
+        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        break;
+      case 'week':
+        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
+        break;
+      case 'month':
+        startDate = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
+        break;
+    }
+
+    return startDate.toISOString();
+  };
+
   const fetchTransactions = async () => {
     try {
-      // In a real app, you would fetch transactions from your database
-      // For now, we'll use mock data
-      const mockTransactions: Transaction[] = [
-        {
-          id: '1',
-          cashier_id: 'cashier1',
-          total_amount: 125.99,
-          payment_method: 'cash',
-          status: 'completed',
-          created_at: new Date().toISOString(),
-        },
-        {
-          id: '2',
-          cashier_id: 'cashier2',
-          total_amount: 89.50,
-          payment_method: 'card',
-          status: 'completed',
-          created_at: new Date(Date.now() - 86400000).toISOString(), // Yesterday
-        },
-        {
-          id: '3',
-          cashier_id: 'cashier1',
-          total_amount: 210.75,
-          payment_method: 'mobile',
-          status: 'completed',
-          created_at: new Date(Date.now() - 172800000).toISOString(), // 2 days ago
-        },
-      ];
+      const startDate = getDateRangeFilter();
       
-      setTransactions(mockTransactions);
-    } catch (error) {
+      const { data, error } = await supabase
+        .from('transactions')
+        .select(`
+          id,
+          cashier_id,
+          total_amount,
+          payment_method,
+          status,
+          created_at
+        `)
+        .gte('created_at', startDate)
+        .order('created_at', { ascending: false })
+        .limit(20);
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      // Fetch cashier details separately
+      const transactionIds = data.map(t => t.id);
+      if (transactionIds.length > 0) {
+        const { data: cashierData, error: cashierError } = await supabase
+          .from('users')
+          .select('id, email')
+          .in('id', data.map(t => t.cashier_id));
+
+        if (!cashierError && cashierData) {
+          // Merge cashier data with transactions
+          const transactionsWithCashiers = data.map(transaction => {
+            const cashier = cashierData.find(c => c.id === transaction.cashier_id);
+            return {
+              ...transaction,
+              cashier: cashier ? { email: cashier.email } : undefined
+            };
+          });
+          
+          setTransactions(transactionsWithCashiers);
+        } else {
+          setTransactions(data);
+        }
+      } else {
+        setTransactions(data);
+      }
+    } catch (error: any) {
       console.error('Error fetching transactions:', error);
+      setError('Failed to load transactions. Please try again.');
     }
   };
 
   const fetchSalesReport = async () => {
     try {
-      // In a real app, you would generate this from your database
-      // For now, we'll use mock data
-      const mockSalesReport: SalesReport[] = [
-        { date: '2023-05-01', total_sales: 1250.75, transaction_count: 24 },
-        { date: '2023-05-02', total_sales: 980.50, transaction_count: 18 },
-        { date: '2023-05-03', total_sales: 1120.25, transaction_count: 21 },
-        { date: '2023-05-04', total_sales: 1340.00, transaction_count: 27 },
-        { date: '2023-05-05', total_sales: 1560.80, transaction_count: 32 },
-        { date: '2023-05-06', total_sales: 1780.60, transaction_count: 35 },
-        { date: '2023-05-07', total_sales: 1620.90, transaction_count: 29 },
-      ];
+      const startDate = getDateRangeFilter();
       
-      setSalesReport(mockSalesReport);
-    } catch (error) {
+      // Get daily sales data
+      const { data, error } = await supabase
+        .from('transactions')
+        .select('created_at, total_amount')
+        .gte('created_at', startDate)
+        .order('created_at', { ascending: true });
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      // Group by date
+      const groupedData: Record<string, { total_sales: number; transaction_count: number }> = {};
+      
+      data.forEach(transaction => {
+        const date = new Date(transaction.created_at).toISOString().split('T')[0];
+        
+        if (!groupedData[date]) {
+          groupedData[date] = {
+            total_sales: 0,
+            transaction_count: 0
+          };
+        }
+        
+        groupedData[date].total_sales += transaction.total_amount;
+        groupedData[date].transaction_count += 1;
+      });
+
+      // Convert to array format
+      const reportData: SalesReport[] = Object.entries(groupedData).map(([date, values]) => ({
+        date,
+        total_sales: values.total_sales,
+        transaction_count: values.transaction_count
+      }));
+
+      setSalesReport(reportData);
+    } catch (error: any) {
       console.error('Error fetching sales report:', error);
+      setError('Failed to load sales report. Please try again.');
     }
   };
 
@@ -162,12 +243,9 @@ export default function Reports() {
               </div>
             </div>
             <div className="hidden sm:ml-6 sm:flex sm:items-center">
-              <button
-                onClick={handleSignOut}
-                className="ml-2 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
-              >
+              <Button onClick={handleSignOut} variant="outline" size="sm">
                 Sign out
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -177,23 +255,38 @@ export default function Reports() {
       <main>
         <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
           <div className="px-4 py-6 sm:px-0">
+            {error && (
+              <div className="mb-6 bg-red-50 border border-red-200 rounded-md p-4">
+                <div className="flex">
+                  <div className="flex-shrink-0">
+                    <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                  <div className="ml-3">
+                    <h3 className="text-sm font-medium text-red-800">{error}</h3>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="flex justify-between items-center mb-6">
               <h1 className="text-2xl font-bold text-gray-900">Sales Reports</h1>
               <div className="flex space-x-2">
                 <Button 
-                  variant={dateRange === 'today' ? 'primary' : 'secondary'}
+                  variant={dateRange === 'today' ? 'default' : 'secondary'}
                   onClick={() => setDateRange('today')}
                 >
                   Today
                 </Button>
                 <Button 
-                  variant={dateRange === 'week' ? 'primary' : 'secondary'}
+                  variant={dateRange === 'week' ? 'default' : 'secondary'}
                   onClick={() => setDateRange('week')}
                 >
                   This Week
                 </Button>
                 <Button 
-                  variant={dateRange === 'month' ? 'primary' : 'secondary'}
+                  variant={dateRange === 'month' ? 'default' : 'secondary'}
                   onClick={() => setDateRange('month')}
                 >
                   This Month
@@ -204,7 +297,7 @@ export default function Reports() {
             {/* Summary Cards */}
             <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4 mb-8">
               <Card>
-                <Card.Content>
+                <CardContent className="p-5">
                   <div className="flex items-center">
                     <div className="flex-shrink-0 bg-primary-100 rounded-md p-3">
                       <svg className="h-6 w-6 text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -220,11 +313,11 @@ export default function Reports() {
                       </dl>
                     </div>
                   </div>
-                </Card.Content>
+                </CardContent>
               </Card>
 
               <Card>
-                <Card.Content>
+                <CardContent className="p-5">
                   <div className="flex items-center">
                     <div className="flex-shrink-0 bg-primary-100 rounded-md p-3">
                       <svg className="h-6 w-6 text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -240,11 +333,11 @@ export default function Reports() {
                       </dl>
                     </div>
                   </div>
-                </Card.Content>
+                </CardContent>
               </Card>
 
               <Card>
-                <Card.Content>
+                <CardContent className="p-5">
                   <div className="flex items-center">
                     <div className="flex-shrink-0 bg-primary-100 rounded-md p-3">
                       <svg className="h-6 w-6 text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -260,11 +353,11 @@ export default function Reports() {
                       </dl>
                     </div>
                   </div>
-                </Card.Content>
+                </CardContent>
               </Card>
 
               <Card>
-                <Card.Content>
+                <CardContent className="p-5">
                   <div className="flex items-center">
                     <div className="flex-shrink-0 bg-primary-100 rounded-md p-3">
                       <svg className="h-6 w-6 text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -280,71 +373,84 @@ export default function Reports() {
                       </dl>
                     </div>
                   </div>
-                </Card.Content>
+                </CardContent>
               </Card>
             </div>
 
             {/* Sales Report Chart */}
             <div className="mb-8">
               <Card>
-                <Card.Header>
+                <CardHeader>
                   <h3 className="text-lg leading-6 font-medium text-gray-900">Sales Trend</h3>
-                </Card.Header>
-                <Card.Content>
-                  <div className="h-64 flex items-end space-x-2">
-                    {salesReport.map((report, index) => (
-                      <div key={index} className="flex flex-col items-center flex-1">
-                        <div 
-                          className="w-full bg-primary-600 rounded-t hover:bg-primary-700 transition-colors"
-                          style={{ height: `${(report.total_sales / Math.max(...salesReport.map(r => r.total_sales))) * 200}px` }}
-                        ></div>
-                        <div className="text-xs text-gray-500 mt-2 truncate w-full text-center">
-                          {new Date(report.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                </CardHeader>
+                <CardContent>
+                  {salesReport.length > 0 ? (
+                    <div className="h-64 flex items-end space-x-2">
+                      {salesReport.map((report, index) => (
+                        <div key={index} className="flex flex-col items-center flex-1">
+                          <div 
+                            className="w-full bg-primary-600 rounded-t hover:bg-primary-700 transition-colors"
+                            style={{ height: `${(report.total_sales / Math.max(...salesReport.map(r => r.total_sales))) * 200}px` }}
+                          ></div>
+                          <div className="text-xs text-gray-500 mt-2 truncate w-full text-center">
+                            {new Date(report.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                          </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                </Card.Content>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="h-64 flex items-center justify-center text-gray-500">
+                      No sales data available for the selected period
+                    </div>
+                  )}
+                </CardContent>
               </Card>
             </div>
 
             {/* Recent Transactions */}
             <Card>
-              <Card.Header>
+              <CardHeader>
                 <h3 className="text-lg leading-6 font-medium text-gray-900">Recent Transactions</h3>
-              </Card.Header>
-              <Card.Content>
+              </CardHeader>
+              <CardContent>
                 <Table>
-                  <Table.Head>
-                    <Table.Row>
-                      <Table.HeaderCell>Transaction ID</Table.HeaderCell>
-                      <Table.HeaderCell>Cashier</Table.HeaderCell>
-                      <Table.HeaderCell>Date</Table.HeaderCell>
-                      <Table.HeaderCell>Payment Method</Table.HeaderCell>
-                      <Table.HeaderCell className="text-right">Amount</Table.HeaderCell>
-                    </Table.Row>
-                  </Table.Head>
-                  <Table.Body>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Transaction ID</TableHead>
+                      <TableHead>Cashier</TableHead>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Payment Method</TableHead>
+                      <TableHead className="text-right">Amount</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
                     {transactions.map((transaction) => (
-                      <Table.Row key={transaction.id}>
-                        <Table.Cell className="font-medium text-gray-900">#{transaction.id.slice(0, 8)}</Table.Cell>
-                        <Table.Cell>{transaction.cashier_id}</Table.Cell>
-                        <Table.Cell>{new Date(transaction.created_at).toLocaleDateString()}</Table.Cell>
-                        <Table.Cell>
+                      <TableRow key={transaction.id}>
+                        <TableCell className="font-medium text-gray-900">#{transaction.id.slice(0, 8)}</TableCell>
+                        <TableCell>{transaction.cashier?.email || 'Unknown'}</TableCell>
+                        <TableCell>{new Date(transaction.created_at).toLocaleDateString()}</TableCell>
+                        <TableCell>
                           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 capitalize">
                             {transaction.payment_method}
                           </span>
-                        </Table.Cell>
-                        <Table.Cell className="text-right font-medium">${transaction.total_amount.toFixed(2)}</Table.Cell>
-                      </Table.Row>
+                        </TableCell>
+                        <TableCell className="text-right font-medium">${transaction.total_amount.toFixed(2)}</TableCell>
+                      </TableRow>
                     ))}
-                  </Table.Body>
-                </Table>
-              </Card.Content>
-            </Card>
-          </div>
+                    {transactions.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={5} className="text-center text-gray-500 py-4">
+                        No transactions found for the selected period
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
         </div>
-      </main>
-    </div>
-  );
+      </div>
+    </main>
+  </div>
+);
 }

@@ -26,6 +26,7 @@ export const AVAILABLE_CURRENCIES: Currency[] = [
   { code: 'JPY', symbol: '¥', name: 'Japanese Yen', decimalPlaces: 0 },
   { code: 'CAD', symbol: 'C$', name: 'Canadian Dollar', decimalPlaces: 2 },
   { code: 'AUD', symbol: 'A$', name: 'Australian Dollar', decimalPlaces: 2 },
+  { code: 'PHP', symbol: '₱', name: 'Philippine Peso', decimalPlaces: 2 },
 ];
 
 interface CurrencyContextType {

@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { createBrowserClient } from '@supabase/ssr';
 
 // Get Supabase credentials from environment variables
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
@@ -15,10 +16,10 @@ if (process.env.NODE_ENV !== 'test') {
   }
 }
 
-// Create Supabase client
-export const supabase = supabaseUrl && supabaseAnonKey 
-  ? createClient(supabaseUrl, supabaseAnonKey)
-  : createClient('http://localhost:54321', 'test-key'); // Fallback for testing
+// Create Supabase client for browser usage
+export const supabase = typeof window !== 'undefined' 
+  ? createBrowserClient(supabaseUrl, supabaseAnonKey)
+  : createClient(supabaseUrl, supabaseAnonKey);
 
 // Custom error handling wrapper for Supabase operations
 export const handleSupabaseError = (error: any, operation: string) => {
@@ -52,10 +53,13 @@ export const supabaseAuth = {
         return { data: null, error: null };
       }
       
+      console.log('Attempting to sign in with email and password:', email);
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
+      
+      console.log('Supabase auth response:', { data, error });
       
       const errorMessage = handleSupabaseError(error, 'sign in');
       if (errorMessage) {
@@ -64,6 +68,7 @@ export const supabaseAuth = {
       
       return { data, error: null };
     } catch (error: any) {
+      console.error('Error in signInWithEmail:', error);
       return { data: null, error: error.message };
     }
   },
@@ -75,7 +80,10 @@ export const supabaseAuth = {
         return { error: null };
       }
       
+      console.log('Attempting to sign out');
       const { error } = await supabase.auth.signOut();
+      
+      console.log('Sign out response:', { error });
       
       const errorMessage = handleSupabaseError(error, 'sign out');
       if (errorMessage) {
@@ -84,6 +92,7 @@ export const supabaseAuth = {
       
       return { error: null };
     } catch (error: any) {
+      console.error('Error in signOut:', error);
       return { error: error.message };
     }
   },
@@ -95,7 +104,11 @@ export const supabaseAuth = {
         return { data: { session: null }, error: null };
       }
       
+      console.log('Getting session from Supabase');
       const { data, error } = await supabase.auth.getSession();
+      
+      console.log('Session data:', data);
+      console.log('Session error:', error);
       
       const errorMessage = handleSupabaseError(error, 'get session');
       if (errorMessage) {
@@ -104,6 +117,7 @@ export const supabaseAuth = {
       
       return { data, error: null };
     } catch (error: any) {
+      console.error('Error in getSession:', error);
       return { data: null, error: error.message };
     }
   }
@@ -123,6 +137,84 @@ export const supabaseDB = {
         .order('created_at', { ascending: false });
       
       const errorMessage = handleSupabaseError(error, 'fetch products');
+      if (errorMessage) {
+        throw new Error(errorMessage);
+      }
+      
+      return { data, error: null };
+    } catch (error: any) {
+      return { data: null, error: error.message };
+    }
+  },
+  
+  async deleteProduct(productId: string) {
+    try {
+      // Return early if we're in a test environment
+      if (process.env.NODE_ENV === 'test') {
+        return { data: {}, error: null };
+      }
+      
+      console.log('Attempting to delete product with ID:', productId);
+      
+      const { data, error } = await supabase
+        .from('products')
+        .delete()
+        .eq('id', productId);
+      
+      console.log('Delete operation result:', { data, error });
+      
+      // Check if any rows were affected
+      if (data && (data as any[]).length === 0) {
+        console.warn('No rows were deleted. This might indicate a permission issue or that the product does not exist.');
+      }
+      
+      const errorMessage = handleSupabaseError(error, 'delete product');
+      if (errorMessage) {
+        throw new Error(errorMessage);
+      }
+      
+      return { data, error: null };
+    } catch (error: any) {
+      console.error('Exception in deleteProduct:', error);
+      return { data: null, error: error.message };
+    }
+  },
+  
+  async addProduct(product: any) {
+    try {
+      // Return early if we're in a test environment
+      if (process.env.NODE_ENV === 'test') {
+        return { data: {}, error: null };
+      }
+      
+      const { data, error } = await supabase
+        .from('products')
+        .insert(product);
+      
+      const errorMessage = handleSupabaseError(error, 'add product');
+      if (errorMessage) {
+        throw new Error(errorMessage);
+      }
+      
+      return { data, error: null };
+    } catch (error: any) {
+      return { data: null, error: error.message };
+    }
+  },
+  
+  async updateProduct(productId: string, product: any) {
+    try {
+      // Return early if we're in a test environment
+      if (process.env.NODE_ENV === 'test') {
+        return { data: {}, error: null };
+      }
+      
+      const { data, error } = await supabase
+        .from('products')
+        .update(product)
+        .eq('id', productId);
+      
+      const errorMessage = handleSupabaseError(error, 'update product');
       if (errorMessage) {
         throw new Error(errorMessage);
       }
@@ -163,19 +255,72 @@ export const supabaseDB = {
         return { data: { role: 'admin' }, error: null };
       }
       
-      const { data, error } = await supabase
-        .from('users')
-        .select('role')
-        .eq('id', userId)
-        .single();
+      // First, try to get the user role from the session JWT
+      const { data: { session } } = await supabase.auth.getSession();
+      console.log('Session in getUserRole:', session);
+      if (session?.user?.app_metadata?.user_role) {
+        console.log('Found user role in session JWT:', session.user.app_metadata.user_role);
+        return { data: { role: session.user.app_metadata.user_role }, error: null };
+      }
       
-      const errorMessage = handleSupabaseError(error, 'fetch user role');
+      // If not available in JWT, try to fetch from database
+      // But handle the case where there might be RLS issues
+      try {
+        console.log('Fetching user role from database for user ID:', userId);
+        const { data, error } = await supabase
+          .from('users')
+          .select('role')
+          .eq('id', userId)
+          .single();
+        
+        console.log('Database response for user role:', { data, error });
+        
+        // If we get a specific RLS error, handle it gracefully
+        if (error && error.message && error.message.includes('recursion')) {
+          console.warn('RLS recursion detected, returning null user data');
+          return { data: null, error: 'RLS recursion error' };
+        }
+        
+        const errorMessage = handleSupabaseError(error, 'fetch user role');
+        if (errorMessage) {
+          throw new Error(errorMessage);
+        }
+        
+        return { data, error: null };
+      } catch (dbError: any) {
+        // If there's a database error (like the recursion issue), handle it gracefully
+        console.warn('Database error while fetching user role:', dbError.message);
+        return { data: null, error: dbError.message };
+      }
+    } catch (error: any) {
+      console.error('Error in getUserRole:', error);
+      return { data: null, error: error.message };
+    }
+  },
+  
+  async logActivity(userId: string, action: string, description: string) {
+    try {
+      // Return early if we're in a test environment
+      if (process.env.NODE_ENV === 'test') {
+        return { data: {}, error: null };
+      }
+      
+      const { data, error } = await supabase
+        .from('activity_logs')
+        .insert({
+          user_id: userId,
+          action,
+          description
+        });
+      
+      const errorMessage = handleSupabaseError(error, 'log activity');
       if (errorMessage) {
         throw new Error(errorMessage);
       }
       
       return { data, error: null };
     } catch (error: any) {
+      console.error('Error logging activity:', error);
       return { data: null, error: error.message };
     }
   }

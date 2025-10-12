@@ -2,33 +2,166 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabaseClient';
-import { Card } from '@/components/ui/Card';
+import { supabase, supabaseDB } from '@/lib/supabaseClient';
+import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
+
+interface Product {
+  id: string;
+  name: string;
+  price: number;
+  stock_quantity: number;
+  created_at: string;
+}
+
+interface User {
+  id: string;
+  email: string;
+  role: string;
+  created_at: string;
+}
+
+interface Transaction {
+  id: string;
+  total_amount: number;
+  created_at: string;
+  users?: {
+    email: string;
+  };
+}
+
+interface ActivityLog {
+  id: string;
+  action: string;
+  description: string;
+  created_at: string;
+  users?: {
+    email: string;
+  };
+}
 
 export default function AdminDashboard() {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState({
+    totalRevenue: 0,
+    productCount: 0,
+    cashierCount: 0
+  });
+  const [recentActivity, setRecentActivity] = useState<any[]>([]);
   const router = useRouter();
 
   useEffect(() => {
     const checkUser = async () => {
+      console.log('Checking user session for admin dashboard');
       const { data: { session } } = await supabase.auth.getSession();
+      console.log('Session data:', session);
       
       if (!session) {
+        console.log('No session found, redirecting to admin login');
         router.push('/auth/admin/login');
         return;
       }
 
-      // In a real app, you would fetch user details from your database
       setUser(session.user);
       setLoading(false);
+      console.log('User authenticated, loading dashboard');
+      
+      // Fetch dashboard data
+      fetchDashboardData();
     };
 
     checkUser();
   }, [router]);
 
+  const fetchDashboardData = async () => {
+    try {
+      // Fetch products
+      const { data: products, error: productsError } = await supabase
+        .from('products')
+        .select('*');
+      
+      if (productsError) {
+        console.error('Error fetching products:', productsError);
+      }
+      
+      // Fetch users (cashiers)
+      const { data: users, error: usersError } = await supabase
+        .from('users')
+        .select('*')
+        .eq('role', 'cashier');
+      
+      if (usersError) {
+        console.error('Error fetching cashiers:', usersError);
+      }
+      
+      // Fetch recent transactions
+      const { data: transactions, error: transactionsError } = await supabase
+        .from('transactions')
+        .select('*, users(email)')
+        .order('created_at', { ascending: false })
+        .limit(3);
+      
+      if (transactionsError) {
+        console.error('Error fetching transactions:', transactionsError);
+      }
+      
+      // Fetch recent activity logs
+      const { data: activityLogs, error: activityLogsError } = await supabase
+        .from('activity_logs')
+        .select('*, users(email)')
+        .order('created_at', { ascending: false })
+        .limit(5);
+      
+      if (activityLogsError) {
+        console.error('Error fetching activity logs:', activityLogsError);
+      }
+      
+      // Calculate stats
+      const totalRevenue = transactions?.reduce((sum, transaction) => sum + transaction.total_amount, 0) || 0;
+      const productCount = products?.length || 0;
+      const cashierCount = users?.length || 0;
+      
+      setStats({
+        totalRevenue,
+        productCount,
+        cashierCount
+      });
+      
+      // Format recent activity from both transactions and activity logs
+      let activity: any[] = [];
+      
+      // Add transaction activities
+      const transactionActivities = transactions?.map(transaction => ({
+        id: transaction.id,
+        action: 'Sale completed',
+        description: `Transaction of $${transaction.total_amount.toFixed(2)} by ${transaction.users?.email || 'Unknown user'}`,
+        timestamp: transaction.created_at,
+        type: 'transaction'
+      })) || [];
+      
+      // Add activity log entries
+      const logActivities = activityLogs?.map(log => ({
+        id: log.id,
+        action: log.action,
+        description: `${log.description || ''} by ${log.users?.email || 'Unknown user'}`,
+        timestamp: log.created_at,
+        type: 'activity'
+      })) || [];
+      
+      // Combine and sort by timestamp
+      activity = [...transactionActivities, ...logActivities]
+        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+        .slice(0, 5);
+      
+      setRecentActivity(activity);
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error);
+    }
+  };
+
   const handleSignOut = async () => {
+    console.log('Signing out user');
     await supabase.auth.signOut();
     router.push('/');
   };
@@ -88,7 +221,7 @@ export default function AdminDashboard() {
             <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
               {/* Stats cards */}
               <Card>
-                <Card.Content className="p-5">
+                <CardContent className="p-5">
                   <div className="flex items-center">
                     <div className="flex-shrink-0 bg-primary-100 rounded-lg p-3">
                       <svg className="h-6 w-6 text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -99,16 +232,16 @@ export default function AdminDashboard() {
                       <dl>
                         <dt className="text-sm font-medium text-gray-500 truncate">Total Revenue</dt>
                         <dd className="flex items-baseline">
-                          <div className="text-2xl font-bold text-gray-900">$40,000</div>
+                          <div className="text-2xl font-bold text-gray-900">${stats.totalRevenue.toFixed(2)}</div>
                         </dd>
                       </dl>
                     </div>
                   </div>
-                </Card.Content>
+                </CardContent>
               </Card>
 
               <Card>
-                <Card.Content className="p-5">
+                <CardContent className="p-5">
                   <div className="flex items-center">
                     <div className="flex-shrink-0 bg-primary-100 rounded-lg p-3">
                       <svg className="h-6 w-6 text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -119,16 +252,16 @@ export default function AdminDashboard() {
                       <dl>
                         <dt className="text-sm font-medium text-gray-500 truncate">Products</dt>
                         <dd className="flex items-baseline">
-                          <div className="text-2xl font-bold text-gray-900">142</div>
+                          <div className="text-2xl font-bold text-gray-900">{stats.productCount}</div>
                         </dd>
                       </dl>
                     </div>
                   </div>
-                </Card.Content>
+                </CardContent>
               </Card>
 
               <Card>
-                <Card.Content className="p-5">
+                <CardContent className="p-5">
                   <div className="flex items-center">
                     <div className="flex-shrink-0 bg-primary-100 rounded-lg p-3">
                       <svg className="h-6 w-6 text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -139,55 +272,59 @@ export default function AdminDashboard() {
                       <dl>
                         <dt className="text-sm font-medium text-gray-500 truncate">Cashiers</dt>
                         <dd className="flex items-baseline">
-                          <div className="text-2xl font-bold text-gray-900">8</div>
+                          <div className="text-2xl font-bold text-gray-900">{stats.cashierCount}</div>
                         </dd>
                       </dl>
                     </div>
                   </div>
-                </Card.Content>
+                </CardContent>
               </Card>
             </div>
 
             {/* Recent activity */}
             <div className="mt-8">
               <Card>
-                <Card.Header>
+                <CardHeader>
                   <h3 className="text-lg font-semibold text-gray-900">Recent Activity</h3>
-                </Card.Header>
-                <Card.Content className="p-0">
-                  <ul className="divide-y divide-gray-200">
-                    {[1, 2, 3, 4, 5].map((item) => (
-                      <li key={item}>
-                        <a href="#" className="block hover:bg-gray-50 transition-colors duration-150">
-                          <div className="flex items-center px-6 py-4">
-                            <div className="min-w-0 flex-1 flex items-center">
-                              <div className="min-w-0 flex-1 px-4 md:grid md:grid-cols-2 md:gap-4">
-                                <div>
-                                  <p className="text-sm font-medium text-primary-600 truncate">Product added</p>
-                                  <p className="mt-1 text-sm text-gray-500">
-                                    <span className="truncate">New product "Wireless Headphones" added to inventory</span>
-                                  </p>
-                                </div>
-                                <div className="hidden md:block">
+                </CardHeader>
+                <CardContent className="p-0">
+                  {recentActivity.length > 0 ? (
+                    <ul className="divide-y divide-gray-200">
+                      {recentActivity.map((activity) => (
+                        <li key={activity.id}>
+                          <div className="block hover:bg-gray-50 transition-colors duration-150">
+                            <div className="flex items-center px-6 py-4">
+                              <div className="min-w-0 flex-1 flex items-center">
+                                <div className="min-w-0 flex-1 px-4 md:grid md:grid-cols-2 md:gap-4">
                                   <div>
-                                    <p className="text-sm text-gray-900">
-                                      Just now
+                                    <p className="text-sm font-medium text-primary-600 truncate">{activity.action}</p>
+                                    <p className="mt-1 text-sm text-gray-500">
+                                      <span className="truncate">{activity.description}</span>
                                     </p>
+                                  </div>
+                                  <div className="hidden md:block">
+                                    <div>
+                                      <p className="text-sm text-gray-900">
+                                        {new Date(activity.timestamp).toLocaleString()}
+                                      </p>
+                                      <p className="text-xs text-gray-500 mt-1">
+                                        {activity.type === 'transaction' ? 'Transaction' : 'Activity Log'}
+                                      </p>
+                                    </div>
                                   </div>
                                 </div>
                               </div>
                             </div>
-                            <div>
-                              <svg className="h-5 w-5 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
-                                <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
-                              </svg>
-                            </div>
                           </div>
-                        </a>
-                      </li>
-                    ))}
-                  </ul>
-                </Card.Content>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <div className="px-6 py-4 text-center text-gray-500">
+                      No recent activity
+                    </div>
+                  )}
+                </CardContent>
               </Card>
             </div>
           </div>

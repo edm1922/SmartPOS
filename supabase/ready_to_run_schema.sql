@@ -4,11 +4,14 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- Users table (Admins and Cashiers)
 CREATE TABLE users (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  email TEXT UNIQUE NOT NULL,
+  email TEXT UNIQUE,
+  username TEXT UNIQUE,
   password TEXT NOT NULL,
   role TEXT CHECK (role IN ('admin', 'cashier')) NOT NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  deleted_at TIMESTAMP WITH TIME ZONE DEFAULT NULL,
+  is_active BOOLEAN DEFAULT TRUE
 );
 
 -- Products table
@@ -55,9 +58,9 @@ CREATE TABLE activity_logs (
 
 -- Insert sample data
 -- Sample users (use secure passwords in production)
-INSERT INTO users (email, password, role) VALUES 
-('admin@example.com', 'Password123', 'admin'),
-('cashier@example.com', 'Password123', 'cashier');
+INSERT INTO users (email, username, password, role) VALUES 
+('admin@example.com', 'admin', 'Password123', 'admin'),
+('cashier@example.com', 'cashier', 'Password123', 'cashier');
 
 -- Sample products
 INSERT INTO products (name, description, price, category, stock_quantity, barcode) VALUES

@@ -351,6 +351,10 @@ export default function CashierPOS() {
 
   const completeTransaction = async () => {
     try {
+      // Show loading state
+      setError(null);
+      setSuccessMessage('Processing transaction...');
+      
       // Get the real cashier ID from sessionStorage
       const cashierId = typeof window !== 'undefined' ? sessionStorage.getItem('cashier_id') : null;
       
@@ -358,22 +362,66 @@ export default function CashierPOS() {
         throw new Error('Cashier information not found. Please log in again.');
       }
 
+      console.log('Creating transaction for cashier ID:', cashierId);
+      
+      // Validate that the cashier exists and is active
+      const { data: cashierData, error: cashierError } = await supabase
+        .from('cashiers')
+        .select('id, username, is_active')
+        .eq('id', cashierId)
+        .single();
+        
+      if (cashierError) {
+        console.error('Error validating cashier:', cashierError);
+        throw new Error(`Failed to validate cashier: ${cashierError.message || 'Unknown error'}`);
+      }
+      
+      if (!cashierData || !cashierData.is_active) {
+        throw new Error('Cashier account is not active. Please contact administrator.');
+      }
+      
+      console.log('Cashier validated:', cashierData);
+
       // Save transaction to database
+      const transactionPayload = {
+        cashier_id: cashierId,
+        total_amount: calculateTotal(),
+        payment_method: paymentMethod,
+        status: 'completed'
+      };
+      
+      console.log('Transaction payload:', transactionPayload);
+      
+      // Add a small delay to ensure the cashier validation is complete
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Enhanced error handling with detailed logging
       const { data: transactionData, error: transactionError } = await supabase
         .from('transactions')
-        .insert({
-          cashier_id: cashierId, // Use the real cashier ID
-          total_amount: calculateTotal(),
-          payment_method: paymentMethod,
-          status: 'completed'
-        })
+        .insert(transactionPayload)
         .select()
         .single();
 
       if (transactionError) {
         console.error('Error creating transaction:', transactionError);
-        throw new Error('Error creating transaction. Please try again.');
+        console.error('Transaction payload that failed:', transactionPayload);
+        console.error('Supabase client config:', {
+          url: process.env.NEXT_PUBLIC_SUPABASE_URL,
+          hasAnonKey: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+        });
+        
+        // Provide more specific error information
+        const errorMessage = transactionError.message || 'Unknown database error';
+        // Add more context to the error message
+        if (errorMessage.includes('row-level security')) {
+          throw new Error('Access denied: You do not have permission to create transactions. Please contact your administrator. (RLS Policy Violation)');
+        } else if (errorMessage.includes('401')) {
+          throw new Error('Authentication failed: The system is not properly configured to allow transaction creation. Please contact your administrator. (401 Unauthorized)');
+        }
+        throw new Error(`Failed to create transaction: ${errorMessage}`);
       }
+      
+      console.log('Transaction created:', transactionData);
 
       // Save transaction items
       const transactionItems = cart.map(item => ({
@@ -382,6 +430,8 @@ export default function CashierPOS() {
         quantity: item.quantity,
         price: item.price
       }));
+      
+      console.log('Transaction items to insert:', transactionItems);
 
       const { error: itemsError } = await supabase
         .from('transaction_items')
@@ -389,21 +439,36 @@ export default function CashierPOS() {
 
       if (itemsError) {
         console.error('Error creating transaction items:', itemsError);
-        throw new Error('Error creating transaction items. Please try again.');
+        // Provide more specific error information
+        const errorMessage = itemsError.message || 'Unknown database error';
+        throw new Error(`Failed to save transaction items: ${errorMessage}`);
       }
+      
+      console.log('Transaction items saved successfully');
 
       // Update inventory in Supabase
+      let inventoryUpdateErrors = 0;
       for (const item of cart) {
         const product = products.find(p => p.id === item.id);
         if (product) {
           const newStock = product.stock_quantity - item.quantity;
+          console.log(`Updating stock for product ${product.id}: ${product.stock_quantity} -> ${newStock}`);
+          
           const { error } = await supabaseDB.updateProductStock(item.id, newStock);
             
           if (error) {
-            console.error('Error updating inventory:', error);
-            setError('Error updating inventory. Please try again.');
+            console.error('Error updating inventory for product:', item.id, error);
+            inventoryUpdateErrors++;
           }
         }
+      }
+      
+      if (inventoryUpdateErrors > 0) {
+        console.warn(`Failed to update inventory for ${inventoryUpdateErrors} products`);
+        // Don't throw an error here as the transaction was successful
+        setSuccessMessage(`Transaction completed with ${inventoryUpdateErrors} inventory update issues. Please check product stock manually.`);
+      } else {
+        setSuccessMessage('Transaction completed successfully!');
       }
       
       // Prepare receipt data
@@ -434,10 +499,19 @@ export default function CashierPOS() {
       // Show success message for 3 seconds
       setTimeout(() => {
         setTransactionComplete(false);
+        setSuccessMessage(null);
       }, 3000);
     } catch (error: any) {
       console.error('Error completing transaction:', error);
-      setError(error.message || 'Error completing transaction. Please try again.');
+      // Provide more detailed error messages
+      const errorMessage = error.message || 'Error completing transaction. Please try again.';
+      setError(errorMessage);
+      setSuccessMessage(null);
+      
+      // If it's a 401 error, suggest checking the database configuration
+      if (errorMessage.includes('401') || errorMessage.includes('Authentication failed')) {
+        setError(`${errorMessage} - Please ensure the database security policies have been applied. See APPLY_DATABASE_FIXES.md for instructions.`);
+      }
     }
   };
 

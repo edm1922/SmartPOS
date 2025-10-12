@@ -2,114 +2,94 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase, supabaseAuth, supabaseDB } from '@/lib/supabaseClient';
+import { supabase } from '@/lib/supabaseClient';
+import { LoginForm } from '@/components/ui/LoginForm';
 
 export default function CashierLogin() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const router = useRouter();
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleLogin = async (identifier: string, password: string) => {
+    console.log('=== CASHIER LOGIN PROCESS STARTED ===');
+    console.log('Identifier (username):', identifier);
+    console.log('Password: [HIDDEN]');
+    
     setLoading(true);
     setError('');
 
     try {
-      const { data, error } = await supabaseAuth.signInWithEmail(email, password);
+      console.log('Attempting to authenticate cashier');
+      
+      // First, authenticate against the cashiers table
+      const { data: cashierData, error: cashierError } = await supabase
+        .from('cashiers')
+        .select('id, username, password')
+        .eq('username', identifier)
+        .is('deleted_at', null)
+        .is('is_active', true)
+        .single();
 
-      if (error) throw new Error(error);
-
-      // Check if user is cashier
-      const { data: userData, error: userError } = await supabaseDB.getUserRole(data?.user?.id || '');
-
-      if (userError) throw new Error(userError);
-
-      if (userData?.role !== 'cashier') {
-        // Sign out if not cashier
-        await supabaseAuth.signOut();
-        throw new Error('Access denied. Cashier access required.');
+      if (cashierError) {
+        console.error('Database error when fetching cashier:', cashierError);
+        console.error('Error details:', {
+          message: cashierError.message,
+          code: cashierError.code,
+          hint: cashierError.hint,
+          details: cashierError.details
+        });
+        throw new Error('Invalid username or password');
       }
 
-      router.push('/cashier/pos');
-    } catch (error: any) {
-      setError(error.message || 'An unexpected error occurred');
-    } finally {
+      if (!cashierData) {
+        console.log('Cashier not found with username:', identifier);
+        throw new Error('Invalid username or password');
+      }
+
+      // In a real implementation, you would hash the password and compare
+      // For now, we're doing a simple comparison
+      if (cashierData.password !== password) {
+        console.log('Password mismatch for user:', identifier);
+        throw new Error('Invalid username or password');
+      }
+
+      console.log('Cashier authenticated successfully');
+      
+      // Store cashier info in session storage for the POS terminal to use
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('cashier_id', cashierData.id);
+        sessionStorage.setItem('cashier_username', cashierData.username);
+        // Set the custom session marker in both localStorage and as a cookie
+        localStorage.setItem('cashier_session', 'true');
+        document.cookie = 'cashier_session=true; path=/; max-age=86400'; // 24 hours
+      }
+      
+      console.log('Redirecting to cashier POS');
+      // Reset loading state before navigation
       setLoading(false);
+      
+      // Force a navigation using window.location for more reliable redirect
+      if (typeof window !== 'undefined') {
+        window.location.href = '/cashier/pos';
+      }
+    } catch (error: any) {
+      console.error('Login error:', error); // Log the actual error for debugging
+      console.log('=== CASHIER LOGIN PROCESS FAILED ===');
+      setError(error.message || 'An unexpected error occurred');
+      setLoading(false); // Reset loading state on error
     }
+    
+    console.log('=== CASHIER LOGIN PROCESS COMPLETED ===');
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="flex justify-center">
-          <div className="bg-primary-600 w-12 h-12 rounded-full"></div>
-        </div>
-        <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-          Cashier Login
-        </h2>
-        <p className="mt-2 text-center text-sm text-gray-600">
-          Sign in to access the POS terminal
-        </p>
-      </div>
-
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
-          <form className="space-y-6" onSubmit={handleLogin}>
-            {error && (
-              <div className="rounded-md bg-red-50 p-4">
-                <div className="text-sm text-red-700">{error}</div>
-              </div>
-            )}
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-                Email address
-              </label>
-              <div className="mt-1">
-                <input
-                  id="email"
-                  name="email"
-                  type="email"
-                  autoComplete="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-                Password
-              </label>
-              <div className="mt-1">
-                <input
-                  id="password"
-                  name="password"
-                  type="password"
-                  autoComplete="current-password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
-                />
-              </div>
-            </div>
-
-            <div>
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50"
-              >
-                {loading ? 'Signing in...' : 'Sign in'}
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-    </div>
+    <LoginForm
+      title="Cashier Login"
+      subtitle="Sign in with username to access the POS terminal"
+      onSubmit={handleLogin}
+      loading={loading}
+      error={error}
+      showBackButton={true}
+    />
   );
 }

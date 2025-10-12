@@ -3,12 +3,23 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
-import { Card } from '@/components/ui/Card';
+import { 
+  Card, 
+  CardHeader, 
+  CardContent, 
+  CardFooter,
+  CardTitle,
+  CardDescription
+} from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { Form, FormField, FormInput } from '@/components/ui/Form';
+import { Form, FormField } from '@/components/ui/Form';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
+import { AVAILABLE_CURRENCIES } from '@/context/CurrencyContext';
 
 // Define the settings schema for validation
 const settingsSchema = z.object({
@@ -16,23 +27,34 @@ const settingsSchema = z.object({
   storeAddress: z.string().min(1, 'Store address is required'),
   storePhone: z.string().min(1, 'Store phone is required'),
   taxRate: z.number().min(0, 'Tax rate must be a positive number').max(100, 'Tax rate cannot exceed 100%'),
+  currency: z.string().min(1, 'Currency is required'),
 });
 
 type SettingsFormData = z.infer<typeof settingsSchema>;
+
+interface StoreSettings {
+  storeName: string;
+  storeAddress: string;
+  storePhone: string;
+  taxRate: number;
+  currency: string;
+}
 
 export default function Settings() {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
   const form = useForm<SettingsFormData>({
     resolver: zodResolver(settingsSchema),
     defaultValues: {
-      storeName: 'ACME Store',
-      storeAddress: '123 Main Street, City, State 12345',
-      storePhone: '(555) 123-4567',
-      taxRate: 8.5,
+      storeName: '',
+      storeAddress: '',
+      storePhone: '',
+      taxRate: 0,
+      currency: 'USD',
     },
   });
 
@@ -47,10 +69,33 @@ export default function Settings() {
 
       setUser(session.user);
       setLoading(false);
+      fetchSettings();
     };
 
     checkUser();
   }, [router]);
+
+  const fetchSettings = async () => {
+    try {
+      // In a real app, you would fetch these settings from your database
+      // For now, we'll use empty values as placeholders
+      // You can implement database storage for settings as needed
+      console.log('Fetching settings from database (placeholder implementation)');
+      
+      // Load currency from localStorage if available
+      const savedCurrency = localStorage.getItem('pos_currency');
+      if (savedCurrency) {
+        try {
+          const parsed = JSON.parse(savedCurrency);
+          form.setValue('currency', parsed.code);
+        } catch (e) {
+          console.error('Failed to parse saved currency', e);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching settings:', error);
+    }
+  };
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -59,15 +104,23 @@ export default function Settings() {
 
   const onSubmit = async (data: SettingsFormData) => {
     setSaving(true);
+    setError(null);
+    
     try {
       // In a real app, you would save these settings to your database
       console.log('Saving settings:', data);
       
+      // Save currency to localStorage
+      const selectedCurrency = AVAILABLE_CURRENCIES.find(c => c.code === data.currency);
+      if (selectedCurrency) {
+        localStorage.setItem('pos_currency', JSON.stringify(selectedCurrency));
+      }
+      
       // Show success message
       alert('Settings saved successfully!');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving settings:', error);
-      alert('Error saving settings. Please try again.');
+      setError('Error saving settings. Please try again.');
     } finally {
       setSaving(false);
     }
@@ -114,12 +167,9 @@ export default function Settings() {
               </div>
             </div>
             <div className="hidden sm:ml-6 sm:flex sm:items-center">
-              <button
-                onClick={handleSignOut}
-                className="ml-2 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
-              >
+              <Button onClick={handleSignOut} variant="outline" size="sm">
                 Sign out
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -129,6 +179,21 @@ export default function Settings() {
       <main>
         <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
           <div className="px-4 py-6 sm:px-0">
+            {error && (
+              <div className="mb-6 bg-red-50 border border-red-200 rounded-md p-4">
+                <div className="flex">
+                  <div className="flex-shrink-0">
+                    <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                  <div className="ml-3">
+                    <h3 className="text-sm font-medium text-red-800">{error}</h3>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="mb-6">
               <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
               <p className="mt-1 text-sm text-gray-500">Manage your store settings and preferences</p>
@@ -138,7 +203,7 @@ export default function Settings() {
               {/* Settings Navigation */}
               <div className="lg:col-span-1">
                 <Card>
-                  <Card.Content className="p-0">
+                  <CardContent className="p-0">
                     <nav className="space-y-1">
                       <a
                         href="#"
@@ -178,68 +243,121 @@ export default function Settings() {
                         <span className="truncate">Receipts</span>
                       </a>
                     </nav>
-                  </Card.Content>
+                  </CardContent>
                 </Card>
               </div>
 
               {/* Settings Form */}
               <div className="lg:col-span-2">
                 <Card>
-                  <Card.Header>
+                  <CardHeader>
                     <h3 className="text-lg leading-6 font-medium text-gray-900">General Settings</h3>
                     <p className="mt-1 text-sm text-gray-500">Update your store information and preferences</p>
-                  </Card.Header>
-                  <Card.Content>
-                    <Form form={form} onSubmit={onSubmit}>
-                      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-                        <FormField name="storeName" label="Store Name">
-                          {({ field }) => <FormInput {...field} placeholder="Enter store name" />}
-                        </FormField>
+                  </CardHeader>
+                  <CardContent>
+                    <Form {...form}>
+                      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+                        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                          <FormField
+                            name="storeName"
+                            render={({ field }) => (
+                              <div className="space-y-2">
+                                <Label htmlFor="storeName">Store Name</Label>
+                                <Input 
+                                  {...field} 
+                                  id="storeName"
+                                  placeholder="Enter store name" 
+                                />
+                              </div>
+                            )}
+                          />
+                          
+                          <FormField
+                            name="storePhone"
+                            render={({ field }) => (
+                              <div className="space-y-2">
+                                <Label htmlFor="storePhone">Store Phone</Label>
+                                <Input 
+                                  {...field} 
+                                  id="storePhone"
+                                  placeholder="Enter phone number" 
+                                />
+                              </div>
+                            )}
+                          />
+                          
+                          <FormField
+                            name="taxRate"
+                            render={({ field }) => (
+                              <div className="space-y-2">
+                                <Label htmlFor="taxRate">Tax Rate (%)</Label>
+                                <Input 
+                                  {...field} 
+                                  id="taxRate"
+                                  type="number" 
+                                  step="0.01" 
+                                  placeholder="0.00" 
+                                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => field.onChange(parseFloat(e.target.value) || 0)}
+                                />
+                              </div>
+                            )}
+                          />
+                          
+                          <FormField
+                            name="currency"
+                            render={({ field }) => (
+                              <div className="space-y-2">
+                                <Label htmlFor="currency">Currency</Label>
+                                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="Select currency" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {AVAILABLE_CURRENCIES.map((currency) => (
+                                      <SelectItem key={currency.code} value={currency.code}>
+                                        {currency.name} ({currency.symbol})
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            )}
+                          />
+                          
+                          <FormField
+                            name="storeAddress"
+                            render={({ field }) => (
+                              <div className="space-y-2 sm:col-span-2">
+                                <Label htmlFor="storeAddress">Store Address</Label>
+                                <textarea
+                                  {...field}
+                                  id="storeAddress"
+                                  rows={3}
+                                  className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                  placeholder="Enter store address"
+                                />
+                              </div>
+                            )}
+                          />
+                        </div>
                         
-                        <FormField name="storePhone" label="Store Phone">
-                          {({ field }) => <FormInput {...field} placeholder="Enter phone number" />}
-                        </FormField>
-                        
-                        <FormField name="taxRate" label="Tax Rate (%)">
-                          {({ field }) => (
-                            <FormInput 
-                              {...field} 
-                              type="number" 
-                              step="0.01" 
-                              placeholder="0.00" 
-                              onChange={(e: React.ChangeEvent<HTMLInputElement>) => field.onChange(parseFloat(e.target.value) || 0)}
-                            />
-                          )}
-                        </FormField>
-                        
-                        <FormField name="storeAddress" label="Store Address" className="sm:col-span-2">
-                          {({ field }) => (
-                            <textarea
-                              {...field}
-                              rows={3}
-                              className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
-                              placeholder="Enter store address"
-                            />
-                          )}
-                        </FormField>
-                      </div>
-                      
-                      <div className="mt-6">
-                        <Button type="submit" disabled={saving}>
-                          {saving ? 'Saving...' : 'Save Settings'}
-                        </Button>
-                      </div>
+                        <div className="mt-6">
+                          <Button type="submit" disabled={saving}>
+                            {saving ? 'Saving...' : 'Save Settings'}
+                          </Button>
+                        </div>
+                      </form>
                     </Form>
-                  </Card.Content>
+                  </CardContent>
                 </Card>
 
                 {/* Additional Settings Sections */}
                 <Card className="mt-6">
-                  <Card.Header>
+                  <CardHeader>
                     <h3 className="text-lg leading-6 font-medium text-gray-900">Receipt Settings</h3>
                     <p className="mt-1 text-sm text-gray-500">Customize your receipt templates</p>
-                  </Card.Header>
-                  <Card.Content>
+                  </CardHeader>
+                  <CardContent>
                     <div className="space-y-4">
                       <div className="flex items-center justify-between">
                         <div>
@@ -275,7 +393,7 @@ export default function Settings() {
                         </button>
                       </div>
                     </div>
-                  </Card.Content>
+                  </CardContent>
                 </Card>
               </div>
             </div>

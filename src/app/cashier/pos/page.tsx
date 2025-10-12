@@ -1,11 +1,20 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase, supabaseAuth, supabaseDB } from '@/lib/supabaseClient';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
+import { 
+  Card, 
+  CardHeader, 
+  CardContent, 
+  CardFooter,
+  CardTitle,
+  CardDescription
+} from '@/components/ui/Card';
+import { useCurrency } from '@/context/CurrencyContext';
+import { CurrencySelector } from '@/components/CurrencySelector';
 
 interface Product {
   id: string;
@@ -17,6 +26,7 @@ interface Product {
 }
 
 export default function CashierPOS() {
+  const { formatPrice } = useCurrency();
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
@@ -25,23 +35,49 @@ export default function CashierPOS() {
   const [searchTerm, setSearchTerm] = useState('');
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [isCartOpen, setIsCartOpen] = useState(false); // For mobile cart drawer
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'mobile'>('cash');
   const [amountReceived, setAmountReceived] = useState('');
   const [transactionComplete, setTransactionComplete] = useState(false);
   const [receiptData, setReceiptData] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null); // For success notifications
   const barcodeInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const checkUser = async () => {
       const { data: sessionData, error: sessionError } = await supabaseAuth.getSession();
       
-      if (sessionError || !sessionData?.session) {
-        router.push('/auth/cashier/login');
+      // Check for our custom cashier session
+      const cashierSession = typeof window !== 'undefined' ? localStorage.getItem('cashier_session') : null;
+      const cashierId = typeof window !== 'undefined' ? sessionStorage.getItem('cashier_id') : null;
+      const cashierUsername = typeof window !== 'undefined' ? sessionStorage.getItem('cashier_username') : null;
+      
+      console.log('Session check:', { 
+        supabaseSession: !!sessionData?.session, 
+        cashierSession, 
+        cashierId, 
+        cashierUsername 
+      });
+      
+      if ((!sessionData?.session && !cashierSession) || !cashierId || !cashierUsername) {
+        console.log('No valid session, redirecting to cashier login');
+        if (typeof window !== 'undefined') {
+          window.location.href = '/auth/cashier/login';
+        }
         return;
       }
 
-      setUser(sessionData.session.user);
+      // Add cashier info to the user object
+      const userWithCashierInfo = {
+        // If we have a real Supabase session, use it, otherwise create a mock user object
+        ...(sessionData?.session?.user || { id: 'cashier', email: 'cashier@pos-system.local' }),
+        cashier_id: cashierId,
+        cashier_username: cashierUsername
+      };
+
+      setUser(userWithCashierInfo);
       setLoading(false);
     };
 
@@ -115,21 +151,91 @@ export default function CashierPOS() {
     }
   };
 
-  // Handle barcode scanning
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Focus the barcode input when a key is pressed
-      if (barcodeInputRef.current && document.activeElement !== barcodeInputRef.current) {
+  // Handle keyboard shortcuts
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    // Focus the barcode input when a key is pressed
+    if (barcodeInputRef.current && document.activeElement !== barcodeInputRef.current) {
+      // Don't interfere with input fields
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+      
+      // Focus barcode input on any key press except Escape
+      if (e.key !== 'Escape') {
         barcodeInputRef.current.focus();
       }
-    };
+    }
+    
+    // Global keyboard shortcuts
+    if (e.ctrlKey || e.metaKey) {
+      switch (e.key) {
+        case 'p': // Ctrl/Cmd + P for process payment
+          e.preventDefault();
+          if (cart.length > 0) {
+            setIsPaymentModalOpen(true);
+          }
+          break;
+        case 'c': // Ctrl/Cmd + C for clear cart
+          e.preventDefault();
+          if (cart.length > 0) {
+            setCart([]);
+          }
+          break;
+        case 'b': // Ctrl/Cmd + B for focus barcode input
+          e.preventDefault();
+          barcodeInputRef.current?.focus();
+          break;
+        case 's': // Ctrl/Cmd + S for sign out
+          e.preventDefault();
+          handleSignOut();
+          break;
+        case ',': // Ctrl/Cmd + , for settings
+          e.preventDefault();
+          setIsSettingsModalOpen(true);
+          break;
+      }
+    }
+    
+    // ESC to close modals
+    if (e.key === 'Escape') {
+      if (isPaymentModalOpen) {
+        setIsPaymentModalOpen(false);
+      } else if (isReceiptModalOpen) {
+        setIsReceiptModalOpen(false);
+      } else if (isSettingsModalOpen) {
+        setIsSettingsModalOpen(false);
+      }
+    }
+    
+    // Enter in barcode input
+    if (e.key === 'Enter' && e.target === barcodeInputRef.current) {
+      const barcode = (e.target as HTMLInputElement).value;
+      const product = products.find(p => p.barcode === barcode);
+      
+      if (product) {
+        addToCart(product);
+        (e.target as HTMLInputElement).value = ''; // Clear the input
+      }
+    }
+  }, [cart, products, isPaymentModalOpen, isReceiptModalOpen, isSettingsModalOpen]);
 
+  // Handle barcode scanning
+  useEffect(() => {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [handleKeyDown]);
 
   const handleSignOut = async () => {
     const { error } = await supabaseAuth.signOut();
+    
+    // Clean up our custom cashier session
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('cashier_session');
+      sessionStorage.removeItem('cashier_id');
+      sessionStorage.removeItem('cashier_username');
+      // Also remove the cookie
+      document.cookie = 'cashier_session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+    }
     
     if (error) {
       setError(error);
@@ -137,18 +243,6 @@ export default function CashierPOS() {
     }
     
     router.push('/');
-  };
-
-  const handleBarcodeScan = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      const barcode = e.currentTarget.value;
-      const product = products.find(p => p.barcode === barcode);
-      
-      if (product) {
-        addToCart(product);
-        e.currentTarget.value = ''; // Clear the input
-      }
-    }
   };
 
   const addToCart = (product: Product) => {
@@ -171,13 +265,33 @@ export default function CashierPOS() {
           ? { ...item, quantity: item.quantity + 1 } 
           : item
       ));
+      
+      // Show success feedback
+      setSuccessMessage(`Added another ${product.name} to cart`);
     } else {
       setCart([...cart, { ...product, quantity: 1 }]);
+      
+      // Show success feedback
+      setSuccessMessage(`Added ${product.name} to cart`);
     }
+    
+    // Clear success message after 2 seconds
+    setTimeout(() => {
+      setSuccessMessage(null);
+    }, 2000);
   };
 
   const removeFromCart = (productId: string) => {
+    const product = cart.find(item => item.id === productId);
     setCart(cart.filter(item => item.id !== productId));
+    
+    // Show success feedback
+    if (product) {
+      setSuccessMessage(`Removed ${product.name} from cart`);
+      setTimeout(() => {
+        setSuccessMessage(null);
+      }, 2000);
+    }
   };
 
   const updateQuantity = (productId: string, quantity: number) => {
@@ -193,11 +307,22 @@ export default function CashierPOS() {
       return;
     }
     
+    // Find the current item in cart
+    const currentItem = cart.find(item => item.id === productId);
+    
     setCart(cart.map(item => 
       item.id === productId 
         ? { ...item, quantity } 
         : item
     ));
+    
+    // Show success feedback for significant changes
+    if (product && currentItem && Math.abs(quantity - currentItem.quantity) >= 1) {
+      setSuccessMessage(`Updated ${product.name} quantity to ${quantity}`);
+      setTimeout(() => {
+        setSuccessMessage(null);
+      }, 2000);
+    }
   };
 
   const calculateTotal = () => {
@@ -216,21 +341,57 @@ export default function CashierPOS() {
     }
   };
 
+  const handleClearCart = () => {
+    setCart([]);
+    setSuccessMessage('Cart cleared');
+    setTimeout(() => {
+      setSuccessMessage(null);
+    }, 2000);
+  };
+
   const completeTransaction = async () => {
     try {
-      // In a real app, you would save the transaction to your database
-      const transactionData = {
-        id: Math.random().toString(36).substr(2, 9),
-        date: new Date().toLocaleString(),
-        items: cart,
-        total: calculateTotal(),
-        paymentMethod,
-        amountReceived: paymentMethod === 'cash' ? parseFloat(amountReceived) || 0 : calculateTotal(),
-        change: paymentMethod === 'cash' ? calculateChange() : 0,
-      };
+      // Get the real cashier ID from sessionStorage
+      const cashierId = typeof window !== 'undefined' ? sessionStorage.getItem('cashier_id') : null;
       
-      console.log('Processing payment:', transactionData);
-      
+      if (!cashierId) {
+        throw new Error('Cashier information not found. Please log in again.');
+      }
+
+      // Save transaction to database
+      const { data: transactionData, error: transactionError } = await supabase
+        .from('transactions')
+        .insert({
+          cashier_id: cashierId, // Use the real cashier ID
+          total_amount: calculateTotal(),
+          payment_method: paymentMethod,
+          status: 'completed'
+        })
+        .select()
+        .single();
+
+      if (transactionError) {
+        console.error('Error creating transaction:', transactionError);
+        throw new Error('Error creating transaction. Please try again.');
+      }
+
+      // Save transaction items
+      const transactionItems = cart.map(item => ({
+        transaction_id: transactionData.id,
+        product_id: item.id,
+        quantity: item.quantity,
+        price: item.price
+      }));
+
+      const { error: itemsError } = await supabase
+        .from('transaction_items')
+        .insert(transactionItems);
+
+      if (itemsError) {
+        console.error('Error creating transaction items:', itemsError);
+        throw new Error('Error creating transaction items. Please try again.');
+      }
+
       // Update inventory in Supabase
       for (const item of cart) {
         const product = products.find(p => p.id === item.id);
@@ -245,8 +406,21 @@ export default function CashierPOS() {
         }
       }
       
+      // Prepare receipt data
+      const receiptData = {
+        id: transactionData.id,
+        date: new Date(transactionData.created_at).toLocaleString(),
+        items: cart,
+        total: calculateTotal(),
+        paymentMethod,
+        amountReceived: paymentMethod === 'cash' ? parseFloat(amountReceived) || 0 : calculateTotal(),
+        change: paymentMethod === 'cash' ? calculateChange() : 0,
+      };
+      
+      console.log('Transaction completed:', receiptData);
+      
       // Set receipt data
-      setReceiptData(transactionData);
+      setReceiptData(receiptData);
       
       // Reset cart and close modal
       setCart([]);
@@ -263,7 +437,7 @@ export default function CashierPOS() {
       }, 3000);
     } catch (error: any) {
       console.error('Error completing transaction:', error);
-      setError('Error completing transaction. Please try again.');
+      setError(error.message || 'Error completing transaction. Please try again.');
     }
   };
 
@@ -291,11 +465,29 @@ export default function CashierPOS() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
+      <style jsx global>{`
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(-10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in {
+          animation: fadeIn 0.3s ease-out;
+        }
+        
+        @keyframes pulse {
+          0% { transform: scale(1); }
+          50% { transform: scale(1.05); }
+          100% { transform: scale(1); }
+        }
+        .animate-pulse-once {
+          animation: pulse 0.3s ease-in-out;
+        }
+      `}</style>
       {/* Error Notification */}
       {error && (
         <div className="fixed top-4 right-4 z-50">
           <Card className="bg-red-50 border-red-200">
-            <Card.Content>
+            <CardContent>
               <div className="flex items-center">
                 <svg className="h-5 w-5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -312,7 +504,25 @@ export default function CashierPOS() {
                   </svg>
                 </button>
               </div>
-            </Card.Content>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Success Notification */}
+      {successMessage && (
+        <div className="fixed top-4 left-4 z-50 animate-fade-in">
+          <Card className="bg-green-50 border-green-200">
+            <CardContent>
+              <div className="flex items-center">
+                <svg className="h-5 w-5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                <div className="ml-3">
+                  <p className="text-sm font-medium text-green-800">{successMessage}</p>
+                </div>
+              </div>
+            </CardContent>
           </Card>
         </div>
       )}
@@ -328,8 +538,16 @@ export default function CashierPOS() {
               </div>
             </div>
             <div className="hidden sm:ml-6 sm:flex sm:items-center">
-              <Button onClick={handleSignOut} variant="outline" size="sm">
-                Sign out
+              <Button 
+                onClick={() => setIsSettingsModalOpen(true)} 
+                variant="outline" 
+                size="sm" 
+                className="mr-2"
+              >
+                Settings (Ctrl+,)
+              </Button>
+              <Button onClick={handleSignOut} variant="outline" size="sm" className="mr-2">
+                Sign out (Ctrl+S)
               </Button>
             </div>
           </div>
@@ -367,9 +585,11 @@ export default function CashierPOS() {
                 ref={barcodeInputRef}
                 type="text"
                 className="focus:ring-primary-500 focus:border-primary-500 block w-full pl-10 pr-12 sm:text-sm border-gray-300 rounded-md"
-                placeholder="Scan barcode..."
-                onKeyDown={handleBarcodeScan}
+                placeholder="Scan barcode... (Ctrl+B to focus)"
               />
+              <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                <span className="text-xs text-gray-500">Enter↵</span>
+              </div>
             </div>
           </div>
 
@@ -381,7 +601,7 @@ export default function CashierPOS() {
                 onClick={() => addToCart(product)}
               >
                 <Card className="hover:shadow-lg transition-all duration-200">
-                  <Card.Content className="p-4">
+                  <CardContent className="p-4">
                     <div className="flex justify-between items-start">
                       <div>
                         <h3 className="text-lg font-medium text-gray-900">{product.name}</h3>
@@ -398,20 +618,20 @@ export default function CashierPOS() {
                           </span>
                         </p>
                       </div>
-                      <p className="text-lg font-bold text-primary-600">${product.price.toFixed(2)}</p>
+                      <p className="text-lg font-bold text-primary-600">{formatPrice(product.price)}</p>
                     </div>
                     <Button 
-                      className="mt-4 w-full"
+                      className={`mt-4 w-full ${successMessage && successMessage.includes(product.name) ? 'animate-pulse-once' : ''}`}
                       onClick={(e) => {
                         e.stopPropagation();
                         addToCart(product);
                       }}
                       disabled={product.stock_quantity <= 0}
-                      variant={product.stock_quantity <= 0 ? 'secondary' : 'primary'}
+                      variant={product.stock_quantity <= 0 ? 'secondary' : 'default'}
                     >
                       {product.stock_quantity <= 0 ? 'Out of Stock' : 'Add to Cart'}
                     </Button>
-                  </Card.Content>
+                  </CardContent>
                 </Card>
               </div>
             ))}
@@ -421,11 +641,11 @@ export default function CashierPOS() {
         {/* Cart Section */}
         <div className="w-full lg:w-96">
           <Card>
-            <Card.Header>
-              <h2 className="text-lg font-medium text-gray-900">Shopping Cart</h2>
-            </Card.Header>
+            <CardHeader>
+              <CardTitle className="text-lg font-medium text-gray-900">Shopping Cart</CardTitle>
+            </CardHeader>
             
-            <Card.Content className="p-4">
+            <CardContent className="p-4">
               {cart.length === 0 ? (
                 <div className="text-center py-8">
                   <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -440,7 +660,7 @@ export default function CashierPOS() {
                     <div key={item.id} className="flex items-center border-b border-gray-100 pb-4 last:border-0 last:pb-0">
                       <div className="flex-1">
                         <h3 className="text-sm font-medium text-gray-900">{item.name}</h3>
-                        <p className="text-sm text-gray-500">${item.price.toFixed(2)} each</p>
+                        <p className="text-sm text-gray-500">{formatPrice(item.price)} each</p>
                         <p className="text-sm text-gray-500">Stock: {item.stock_quantity}</p>
                       </div>
                       <div className="flex items-center space-x-2">
@@ -464,7 +684,7 @@ export default function CashierPOS() {
                         </Button>
                         <Button 
                           onClick={() => removeFromCart(item.id)}
-                          variant="danger"
+                          variant="destructive"
                           size="sm"
                           className="ml-2 w-8 h-8 p-0"
                         >
@@ -477,12 +697,12 @@ export default function CashierPOS() {
                   ))}
                 </div>
               )}
-            </Card.Content>
+            </CardContent>
             
-            <Card.Footer className="p-4">
-              <div className="flex justify-between text-lg font-bold mb-4">
+            <CardFooter className="p-4">
+              <div className={`flex justify-between text-lg font-bold mb-4 ${successMessage ? 'animate-pulse-once' : ''}`}>
                 <span>Total:</span>
-                <span>${calculateTotal().toFixed(2)}</span>
+                <span>{formatPrice(calculateTotal())}</span>
               </div>
               <Button 
                 className="w-full"
@@ -490,9 +710,9 @@ export default function CashierPOS() {
                 onClick={handleProcessPayment}
                 size="lg"
               >
-                Process Payment
+                Process Payment (Ctrl+P)
               </Button>
-            </Card.Footer>
+            </CardFooter>
           </Card>
         </div>
       </div>
@@ -508,15 +728,15 @@ export default function CashierPOS() {
           <div className="bg-gray-50 p-4 rounded-lg">
             <div className="flex justify-between mb-2">
               <span className="text-gray-600">Subtotal:</span>
-              <span className="font-medium">${calculateTotal().toFixed(2)}</span>
+              <span className="font-medium">{formatPrice(calculateTotal())}</span>
             </div>
             <div className="flex justify-between mb-2">
               <span className="text-gray-600">Tax:</span>
-              <span className="font-medium">$0.00</span>
+              <span className="font-medium">{formatPrice(0)}</span>
             </div>
             <div className="flex justify-between border-t border-gray-200 pt-2 mt-2">
               <span className="text-lg font-bold">Total:</span>
-              <span className="text-lg font-bold">${calculateTotal().toFixed(2)}</span>
+              <span className="text-lg font-bold">{formatPrice(calculateTotal())}</span>
             </div>
           </div>
 
@@ -580,7 +800,7 @@ export default function CashierPOS() {
               </div>
               {amountReceived && (
                 <div className="mt-2 text-sm text-gray-500">
-                  Change: ${calculateChange().toFixed(2)}
+                  Change: {formatPrice(calculateChange())}
                 </div>
               )}
             </div>
@@ -632,7 +852,7 @@ export default function CashierPOS() {
                       <span className="font-medium">{item.name}</span>
                       <span className="text-gray-600"> x{item.quantity}</span>
                     </div>
-                    <span>${(item.price * item.quantity).toFixed(2)}</span>
+                    <span>{formatPrice(item.price * item.quantity)}</span>
                   </div>
                 ))}
               </div>
@@ -641,15 +861,15 @@ export default function CashierPOS() {
             <div className="border-t border-gray-200 pt-4 mb-6">
               <div className="flex justify-between mb-2">
                 <span className="text-gray-600">Subtotal:</span>
-                <span>${receiptData.total.toFixed(2)}</span>
+                <span>{formatPrice(receiptData.total)}</span>
               </div>
               <div className="flex justify-between mb-2">
                 <span className="text-gray-600">Tax:</span>
-                <span>$0.00</span>
+                <span>{formatPrice(0)}</span>
               </div>
               <div className="flex justify-between font-bold text-lg mb-2">
                 <span>Total:</span>
-                <span>${receiptData.total.toFixed(2)}</span>
+                <span>{formatPrice(receiptData.total)}</span>
               </div>
               <div className="flex justify-between mb-2">
                 <span className="text-gray-600">Payment Method:</span>
@@ -659,11 +879,11 @@ export default function CashierPOS() {
                 <>
                   <div className="flex justify-between mb-2">
                     <span className="text-gray-600">Amount Received:</span>
-                    <span>${receiptData.amountReceived.toFixed(2)}</span>
+                    <span>{formatPrice(receiptData.amountReceived)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-600">Change:</span>
-                    <span>${receiptData.change.toFixed(2)}</span>
+                    <span>{formatPrice(receiptData.change)}</span>
                   </div>
                 </>
               )}
@@ -686,11 +906,29 @@ export default function CashierPOS() {
         )}
       </Modal>
 
+      {/* Settings Modal */}
+      <Modal 
+        isOpen={isSettingsModalOpen} 
+        onClose={() => setIsSettingsModalOpen(false)} 
+        title="POS Settings"
+        size="md"
+      >
+        <div className="space-y-6">
+          <CurrencySelector />
+          
+          <div className="flex justify-end space-x-3">
+            <Button variant="secondary" onClick={() => setIsSettingsModalOpen(false)}>
+              Close
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
       {/* Transaction Complete Notification */}
       {transactionComplete && (
         <div className="fixed bottom-4 right-4">
           <Card className="bg-green-50 border-green-200">
-            <Card.Content>
+            <CardContent>
               <div className="flex items-center">
                 <svg className="h-5 w-5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -699,7 +937,7 @@ export default function CashierPOS() {
                   <p className="text-sm font-medium text-green-800">Transaction completed successfully!</p>
                 </div>
               </div>
-            </Card.Content>
+            </CardContent>
           </Card>
         </div>
       )}

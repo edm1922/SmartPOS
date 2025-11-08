@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { Button } from '@/components/ui/Button';
 
-export default function Home() {
+export default function SimpleHome() {
   const [session, setSession] = useState<any>(null);
 
   useEffect(() => {

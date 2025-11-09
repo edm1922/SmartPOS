@@ -603,4 +603,3 @@ const generateRandomPassword = (length: number = 12): string => {
   }
   return password;
 };
-)};

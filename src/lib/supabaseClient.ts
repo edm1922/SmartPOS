@@ -298,6 +298,71 @@ export const supabaseDB = {
     }
   },
   
+  async getSettings() {
+    try {
+      // Return early if we're in a test environment
+      if (process.env.NODE_ENV === 'test') {
+        return { data: null, error: null };
+      }
+      
+      const { data, error } = await supabase
+        .from('settings')
+        .select('*')
+        .limit(1)
+        .single();
+      
+      const errorMessage = handleSupabaseError(error, 'fetch settings');
+      if (errorMessage) {
+        throw new Error(errorMessage);
+      }
+      
+      return { data, error: null };
+    } catch (error: any) {
+      return { data: null, error: error.message };
+    }
+  },
+  
+  async updateSettings(settings: any) {
+    try {
+      // Return early if we're in a test environment
+      if (process.env.NODE_ENV === 'test') {
+        return { data: {}, error: null };
+      }
+      
+      // Check if settings exist
+      const { data: existingSettings } = await supabase
+        .from('settings')
+        .select('id')
+        .limit(1)
+        .single();
+      
+      let result;
+      if (existingSettings) {
+        // Update existing settings
+        result = await supabase
+          .from('settings')
+          .update(settings)
+          .eq('id', existingSettings.id);
+      } else {
+        // Insert new settings
+        result = await supabase
+          .from('settings')
+          .insert(settings);
+      }
+      
+      const { data, error } = result;
+      
+      const errorMessage = handleSupabaseError(error, 'update settings');
+      if (errorMessage) {
+        throw new Error(errorMessage);
+      }
+      
+      return { data, error: null };
+    } catch (error: any) {
+      return { data: null, error: error.message };
+    }
+  },
+  
   async logActivity(userId: string, action: string, description: string) {
     try {
       // Return early if we're in a test environment

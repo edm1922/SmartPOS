@@ -56,6 +56,18 @@ CREATE TABLE activity_logs (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Settings table
+CREATE TABLE settings (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  store_name TEXT NOT NULL,
+  store_address TEXT NOT NULL,
+  store_phone TEXT NOT NULL,
+  tax_rate DECIMAL(5, 2) DEFAULT 0.00,
+  currency_code TEXT DEFAULT 'PHP',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- Insert sample data
 -- Sample users (use secure passwords in production)
 INSERT INTO users (email, username, password, role) VALUES 
@@ -69,3 +81,8 @@ INSERT INTO products (name, description, price, category, stock_quantity, barcod
 ('USB-C Cable', 'Fast charging USB-C cable, 2m length', 12.99, 'Accessories', 75, '345678901234'),
 ('Bluetooth Speaker', 'Portable Bluetooth speaker with excellent sound quality', 79.99, 'Electronics', 30, '456789012345'),
 ('Laptop Stand', 'Adjustable aluminum laptop stand', 45.99, 'Accessories', 15, '567890123456');
+
+-- Default settings
+INSERT INTO settings (store_name, store_address, store_phone, tax_rate, currency_code)
+SELECT 'AJ Softdrive POS', '123 Business Street, Metro Manila', '+63 912 345 6789', 12.00, 'PHP'
+WHERE NOT EXISTS (SELECT 1 FROM settings);

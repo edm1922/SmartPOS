@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
+import { supabaseDB } from '@/lib/supabaseClient';
 import { 
   Card, 
   CardHeader, 
@@ -45,6 +46,9 @@ export default function Settings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'general' | 'receipts'>('general');
+  const [showStoreLogo, setShowStoreLogo] = useState(true);
+  const [showCustomerDetails, setShowCustomerDetails] = useState(true);
   const router = useRouter();
 
   const form = useForm<SettingsFormData>({
@@ -76,10 +80,22 @@ export default function Settings() {
 
   const fetchSettings = async () => {
     try {
-      // In a real app, you would fetch these settings from your database
-      // For now, we'll use empty values as placeholders
-      // You can implement database storage for settings as needed
-      console.log('Fetching settings from database (placeholder implementation)');
+      const { data, error } = await supabaseDB.getSettings();
+      
+      if (error) {
+        console.error('Error fetching settings:', error);
+        setError('Failed to load settings. Please try again.');
+        return;
+      }
+      
+      if (data) {
+        form.reset({
+          storeName: data.store_name || '',
+          storeAddress: data.store_address || '',
+          storePhone: data.store_phone || '',
+          taxRate: data.tax_rate || 0,
+        });
+      }
       
       // Load currency from localStorage if available
       const savedCurrency = localStorage.getItem('pos_currency');
@@ -94,6 +110,7 @@ export default function Settings() {
       }
     } catch (error) {
       console.error('Error fetching settings:', error);
+      setError('Error loading settings. Please try again.');
     }
   };
 
@@ -107,8 +124,19 @@ export default function Settings() {
     setError(null);
     
     try {
-      // In a real app, you would save these settings to your database
-      console.log('Saving settings:', data);
+      // Save settings to database
+      const settingsData = {
+        store_name: data.storeName,
+        store_address: data.storeAddress,
+        store_phone: data.storePhone,
+        tax_rate: data.taxRate,
+      };
+      
+      const { error: saveError } = await supabaseDB.updateSettings(settingsData);
+      
+      if (saveError) {
+        throw new Error(saveError);
+      }
       
       // Save currency to localStorage (fixed to PHP)
       const phpCurrency = AVAILABLE_CURRENCIES.find(c => c.code === 'PHP');
@@ -212,7 +240,15 @@ export default function Settings() {
                     <nav className="space-y-1">
                       <a
                         href="#"
-                        className="bg-primary-50 border-primary-500 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300 group flex items-center px-3 py-2 text-sm font-medium rounded-md border-l-4"
+                        className={`${
+                          activeTab === 'general' 
+                            ? 'bg-primary-50 border-primary-500 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300' 
+                            : 'text-gray-700 hover:text-gray-900 hover:bg-gray-50 dark:text-gray-300 dark:hover:text-gray-200 dark:hover:bg-gray-700'
+                        } group flex items-center px-3 py-2 text-sm font-medium rounded-md border-l-4`}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          setActiveTab('general');
+                        }}
                       >
                         <svg className="text-primary-500 dark:text-primary-400 group-hover:text-primary-500 dark:group-hover:text-primary-300 mr-3 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -222,25 +258,15 @@ export default function Settings() {
                       </a>
                       <a
                         href="#"
-                        className="text-gray-700 hover:text-gray-900 hover:bg-gray-50 dark:text-gray-300 dark:hover:text-gray-200 dark:hover:bg-gray-700 group flex items-center px-3 py-2 text-sm font-medium rounded-md border-l-4 border-transparent"
-                      >
-                        <svg className="text-gray-400 group-hover:text-gray-500 dark:text-gray-500 dark:group-hover:text-gray-400 mr-3 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 0112 0v4h8z" />
-                        </svg>
-                        <span className="truncate">Security</span>
-                      </a>
-                      <a
-                        href="#"
-                        className="text-gray-700 hover:text-gray-900 hover:bg-gray-50 dark:text-gray-300 dark:hover:text-gray-200 dark:hover:bg-gray-700 group flex items-center px-3 py-2 text-sm font-medium rounded-md border-l-4 border-transparent"
-                      >
-                        <svg className="text-gray-400 group-hover:text-gray-500 dark:text-gray-500 dark:group-hover:text-gray-400 mr-3 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                        </svg>
-                        <span className="truncate">Notifications</span>
-                      </a>
-                      <a
-                        href="#"
-                        className="text-gray-700 hover:text-gray-900 hover:bg-gray-50 dark:text-gray-300 dark:hover:text-gray-200 dark:hover:bg-gray-700 group flex items-center px-3 py-2 text-sm font-medium rounded-md border-l-4 border-transparent"
+                        className={`${
+                          activeTab === 'receipts' 
+                            ? 'bg-primary-50 border-primary-500 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300' 
+                            : 'text-gray-700 hover:text-gray-900 hover:bg-gray-50 dark:text-gray-300 dark:hover:text-gray-200 dark:hover:bg-gray-700'
+                        } group flex items-center px-3 py-2 text-sm font-medium rounded-md border-l-4`}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          setActiveTab('receipts');
+                        }}
                       >
                         <svg className="text-gray-400 group-hover:text-gray-500 dark:text-gray-500 dark:group-hover:text-gray-400 mr-3 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
@@ -254,138 +280,157 @@ export default function Settings() {
 
               {/* Settings Form */}
               <div className="lg:col-span-2">
-                <Card className="bg-white dark:bg-gray-800">
-                  <CardHeader>
-                    <h3 className="text-lg leading-6 font-medium text-gray-900 dark:text-white">General Settings</h3>
-                    <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Update your store information and preferences</p>
-                  </CardHeader>
-                  <CardContent>
-                    <Form {...form}>
-                      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-                        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-                          <FormField
-                            name="storeName"
-                            render={({ field }) => (
-                              <div className="space-y-2">
-                                <Label htmlFor="storeName" className="text-gray-900 dark:text-white">Store Name</Label>
-                                <Input 
-                                  {...field} 
-                                  id="storeName"
-                                  placeholder="Enter store name" 
-                                  className="bg-white dark:bg-gray-700 text-gray-900 dark:text-white border-gray-300 dark:border-gray-600"
-                                />
-                              </div>
-                            )}
-                          />
+                {activeTab === 'general' ? (
+                  <Card className="bg-white dark:bg-gray-800">
+                    <CardHeader>
+                      <h3 className="text-lg leading-6 font-medium text-gray-900 dark:text-white">General Settings</h3>
+                      <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Update your store information and preferences</p>
+                    </CardHeader>
+                    <CardContent>
+                      <Form {...form}>
+                        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+                          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                            <FormField
+                              name="storeName"
+                              render={({ field }) => (
+                                <div className="space-y-2">
+                                  <Label htmlFor="storeName" className="text-gray-900 dark:text-white">Store Name</Label>
+                                  <Input 
+                                    {...field} 
+                                    id="storeName"
+                                    placeholder="Enter store name" 
+                                    className="bg-white dark:bg-gray-700 text-gray-900 dark:text-white border-gray-300 dark:border-gray-600"
+                                  />
+                                </div>
+                              )}
+                            />
+                            
+                            <FormField
+                              name="storePhone"
+                              render={({ field }) => (
+                                <div className="space-y-2">
+                                  <Label htmlFor="storePhone" className="text-gray-900 dark:text-white">Store Phone</Label>
+                                  <Input 
+                                    {...field} 
+                                    id="storePhone"
+                                    placeholder="Enter phone number" 
+                                    className="bg-white dark:bg-gray-700 text-gray-900 dark:text-white border-gray-300 dark:border-gray-600"
+                                  />
+                                </div>
+                              )}
+                            />
+                            
+                            <FormField
+                              name="taxRate"
+                              render={({ field }) => (
+                                <div className="space-y-2">
+                                  <Label htmlFor="taxRate" className="text-gray-900 dark:text-white">Tax Rate (%)</Label>
+                                  <Input 
+                                    {...field} 
+                                    id="taxRate"
+                                    type="number" 
+                                    step="0.01" 
+                                    placeholder="0.00" 
+                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => field.onChange(parseFloat(e.target.value) || 0)}
+                                    className="bg-white dark:bg-gray-700 text-gray-900 dark:text-white border-gray-300 dark:border-gray-600"
+                                  />
+                                </div>
+                              )}
+                            />
+                            
+                            <FormField
+                              name="storeAddress"
+                              render={({ field }) => (
+                                <div className="space-y-2 sm:col-span-2">
+                                  <Label htmlFor="storeAddress" className="text-gray-900 dark:text-white">Store Address</Label>
+                                  <textarea
+                                    {...field}
+                                    id="storeAddress"
+                                    rows={3}
+                                    className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 bg-white dark:bg-gray-700 text-gray-900 dark:text-white border-gray-300 dark:border-gray-600"
+                                    placeholder="Enter store address"
+                                  />
+                                </div>
+                              )}
+                            />
+                          </div>
                           
-                          <FormField
-                            name="storePhone"
-                            render={({ field }) => (
-                              <div className="space-y-2">
-                                <Label htmlFor="storePhone" className="text-gray-900 dark:text-white">Store Phone</Label>
-                                <Input 
-                                  {...field} 
-                                  id="storePhone"
-                                  placeholder="Enter phone number" 
-                                  className="bg-white dark:bg-gray-700 text-gray-900 dark:text-white border-gray-300 dark:border-gray-600"
-                                />
-                              </div>
-                            )}
-                          />
-                          
-                          <FormField
-                            name="taxRate"
-                            render={({ field }) => (
-                              <div className="space-y-2">
-                                <Label htmlFor="taxRate" className="text-gray-900 dark:text-white">Tax Rate (%)</Label>
-                                <Input 
-                                  {...field} 
-                                  id="taxRate"
-                                  type="number" 
-                                  step="0.01" 
-                                  placeholder="0.00" 
-                                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => field.onChange(parseFloat(e.target.value) || 0)}
-                                  className="bg-white dark:bg-gray-700 text-gray-900 dark:text-white border-gray-300 dark:border-gray-600"
-                                />
-                              </div>
-                            )}
-                          />
-                          
-                          <FormField
-                            name="storeAddress"
-                            render={({ field }) => (
-                              <div className="space-y-2 sm:col-span-2">
-                                <Label htmlFor="storeAddress" className="text-gray-900 dark:text-white">Store Address</Label>
-                                <textarea
-                                  {...field}
-                                  id="storeAddress"
-                                  rows={3}
-                                  className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 bg-white dark:bg-gray-700 text-gray-900 dark:text-white border-gray-300 dark:border-gray-600"
-                                  placeholder="Enter store address"
-                                />
-                              </div>
-                            )}
-                          />
+                          <div className="mt-6">
+                            <Button 
+                              type="submit" 
+                              disabled={saving}
+                              className="bg-primary-600 hover:bg-primary-700 text-white"
+                            >
+                              {saving ? 'Saving...' : 'Save Settings'}
+                            </Button>
+                          </div>
+                        </form>
+                      </Form>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <Card className="bg-white dark:bg-gray-800">
+                    <CardHeader>
+                      <h3 className="text-lg leading-6 font-medium text-gray-900 dark:text-white">Receipt Settings</h3>
+                      <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Customize your receipt templates</p>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h4 className="text-sm font-medium text-gray-900 dark:text-white">Show Store Logo</h4>
+                            <p className="text-sm text-gray-500 dark:text-gray-400">Display your store logo on receipts</p>
+                          </div>
+                          <button
+                            type="button"
+                            className={`${
+                              showStoreLogo 
+                                ? 'bg-primary-600' 
+                                : 'bg-gray-200 dark:bg-gray-700'
+                            } relative inline-flex flex-shrink-0 h-6 w-11 border-2 border-transparent rounded-full cursor-pointer transition-colors ease-in-out duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500`}
+                            role="switch"
+                            onClick={() => setShowStoreLogo(!showStoreLogo)}
+                          >
+                            <span
+                              aria-hidden="true"
+                              className={`${
+                                showStoreLogo 
+                                  ? 'translate-x-5' 
+                                  : 'translate-x-0'
+                              } pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform ring-0 transition ease-in-out duration-200`}
+                            />
+                          </button>
                         </div>
                         
-                        <div className="mt-6">
-                          <Button 
-                            type="submit" 
-                            disabled={saving}
-                            className="bg-primary-600 hover:bg-primary-700 text-white"
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h4 className="text-sm font-medium text-gray-900 dark:text-white">Show Customer Details</h4>
+                            <p className="text-sm text-gray-500 dark:text-gray-400">Include customer information on receipts</p>
+                          </div>
+                          <button
+                            type="button"
+                            className={`${
+                              showCustomerDetails 
+                                ? 'bg-primary-600' 
+                                : 'bg-gray-200 dark:bg-gray-700'
+                            } relative inline-flex flex-shrink-0 h-6 w-11 border-2 border-transparent rounded-full cursor-pointer transition-colors ease-in-out duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500`}
+                            role="switch"
+                            onClick={() => setShowCustomerDetails(!showCustomerDetails)}
                           >
-                            {saving ? 'Saving...' : 'Save Settings'}
-                          </Button>
+                            <span
+                              aria-hidden="true"
+                              className={`${
+                                showCustomerDetails 
+                                  ? 'translate-x-5' 
+                                  : 'translate-x-0'
+                              } pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform ring-0 transition ease-in-out duration-200`}
+                            />
+                          </button>
                         </div>
-                      </form>
-                    </Form>
-                  </CardContent>
-                </Card>
-
-                {/* Additional Settings Sections */}
-                <Card className="mt-6 bg-white dark:bg-gray-800">
-                  <CardHeader>
-                    <h3 className="text-lg leading-6 font-medium text-gray-900 dark:text-white">Receipt Settings</h3>
-                    <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Customize your receipt templates</p>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <h4 className="text-sm font-medium text-gray-900 dark:text-white">Show Store Logo</h4>
-                          <p className="text-sm text-gray-500 dark:text-gray-400">Display your store logo on receipts</p>
-                        </div>
-                        <button
-                          type="button"
-                          className="bg-gray-200 dark:bg-gray-700 relative inline-flex flex-shrink-0 h-6 w-11 border-2 border-transparent rounded-full cursor-pointer transition-colors ease-in-out duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
-                          role="switch"
-                        >
-                          <span
-                            aria-hidden="true"
-                            className="translate-x-5 pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform ring-0 transition ease-in-out duration-200"
-                          />
-                        </button>
                       </div>
-                      
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <h4 className="text-sm font-medium text-gray-900 dark:text-white">Show Customer Details</h4>
-                          <p className="text-sm text-gray-500 dark:text-gray-400">Include customer information on receipts</p>
-                        </div>
-                        <button
-                          type="button"
-                          className="bg-gray-200 dark:bg-gray-700 relative inline-flex flex-shrink-0 h-6 w-11 border-2 border-transparent rounded-full cursor-pointer transition-colors ease-in-out duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
-                          role="switch"
-                        >
-                          <span
-                            aria-hidden="true"
-                            className="translate-x-5 pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform ring-0 transition ease-in-out duration-200"
-                          />
-                        </button>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+                    </CardContent>
+                  </Card>
+                )}
               </div>
             </div>
           </div>

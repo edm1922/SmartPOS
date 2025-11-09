@@ -145,43 +145,48 @@ export default function CashierManagement() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading cashier management...</p>
+          <p className="mt-4 text-gray-600 dark:text-gray-400">Loading cashier management...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       {/* Navigation */}
-      <nav className="bg-white shadow">
+      <nav className="bg-white dark:bg-gray-800 shadow">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
             <div className="flex">
               <div className="flex-shrink-0 flex items-center">
                 <div className="bg-primary-600 w-8 h-8 rounded-full"></div>
-                <span className="ml-2 text-xl font-bold text-gray-900">POS Admin</span>
+                <span className="ml-2 text-xl font-bold text-gray-900 dark:text-white">POS Admin</span>
               </div>
               <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
-                <a href="/admin/dashboard" className="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+                <a href="/admin/dashboard" className="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-300 dark:hover:text-gray-200 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
                   Dashboard
                 </a>
-                <a href="/admin/products" className="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+                <a href="/admin/products" className="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-300 dark:hover:text-gray-200 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
                   Products
                 </a>
-                <a href="/admin/cashiers" className="border-primary-500 text-gray-900 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+                <a href="/admin/cashiers" className="border-primary-500 text-gray-900 dark:text-white inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
                   Cashiers
                 </a>
-                <a href="/admin/reports" className="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+                <a href="/admin/reports" className="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-300 dark:hover:text-gray-200 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
                   Reports
                 </a>
               </div>
             </div>
             <div className="hidden sm:ml-6 sm:flex sm:items-center">
-              <Button onClick={handleSignOut} variant="outline" size="sm">
+              <Button 
+                onClick={handleSignOut} 
+                variant="outline" 
+                size="sm"
+                className="text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
+              >
                 Sign out
               </Button>
             </div>
@@ -194,60 +199,43 @@ export default function CashierManagement() {
         <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
           <div className="px-4 py-6 sm:px-0">
             <div className="flex justify-between items-center mb-6">
-              <h1 className="text-2xl font-bold text-gray-900">Cashier Management</h1>
-              <Button onClick={handleAddCashier}>Add Cashier</Button>
+              <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Cashier Management</h1>
+              <Button 
+                onClick={handleAddCashier}
+                className="bg-primary-600 hover:bg-primary-700 text-white"
+              >
+                Add Cashier
+              </Button>
             </div>
 
-            {error && (
-              <div className="mb-6 bg-red-50 border border-red-200 rounded-md p-4">
-                <div className="flex">
-                  <div className="flex-shrink-0">
-                    <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                    </svg>
-                  </div>
-                  <div className="ml-3">
-                    <h3 className="text-sm font-medium text-red-800">{error}</h3>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <Card>
+            <Card className="bg-white dark:bg-gray-800">
               <CardContent>
                 <Table>
                   <TableHeader>
-                    <TableRow>
-                      <TableHead>Username</TableHead>
-                      <TableHead>Created At</TableHead>
-                      <TableHead>Actions</TableHead>
+                    <TableRow className="bg-gray-50 dark:bg-gray-700">
+                      <TableHead className="text-gray-900 dark:text-white">Username</TableHead>
+                      <TableHead className="text-gray-900 dark:text-white">Email</TableHead>
+                      <TableHead className="text-gray-900 dark:text-white">Created At</TableHead>
+                      <TableHead className="text-right text-gray-900 dark:text-white">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {cashiers.map((cashier) => (
-                      <TableRow key={cashier.id}>
-                        <TableCell className="font-medium text-gray-900">{cashier.username || cashier.email}</TableCell>
-                        <TableCell>{new Date(cashier.created_at).toLocaleDateString()}</TableCell>
-                        <TableCell>
-                          <div className="flex space-x-2">
-                            <Button
-                              onClick={() => handleDeleteCashier(cashier.id)}
-                              variant="destructive"
-                              size="sm"
-                            >
-                              Delete
-                            </Button>
-                          </div>
+                      <TableRow key={cashier.id} className="border-b border-gray-200 dark:border-gray-700">
+                        <TableCell className="font-medium text-gray-900 dark:text-white">{cashier.username}</TableCell>
+                        <TableCell className="text-gray-500 dark:text-gray-400">{cashier.email || '-'}</TableCell>
+                        <TableCell className="text-gray-500 dark:text-gray-400">{new Date(cashier.created_at).toLocaleDateString()}</TableCell>
+                        <TableCell className="text-right">
+                          <Button 
+                            onClick={() => handleDeleteCashier(cashier.id)}
+                            variant="destructive"
+                            size="sm"
+                          >
+                            Delete
+                          </Button>
                         </TableCell>
                       </TableRow>
                     ))}
-                    {cashiers.length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={3} className="text-center text-gray-500 py-4">
-                          No cashiers found
-                        </TableCell>
-                      </TableRow>
-                    )}
                   </TableBody>
                 </Table>
               </CardContent>

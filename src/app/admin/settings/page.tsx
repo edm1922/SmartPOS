@@ -27,7 +27,7 @@ const settingsSchema = z.object({
   storeAddress: z.string().min(1, 'Store address is required'),
   storePhone: z.string().min(1, 'Store phone is required'),
   taxRate: z.number().min(0, 'Tax rate must be a positive number').max(100, 'Tax rate cannot exceed 100%'),
-  currency: z.string().min(1, 'Currency is required'),
+  // currency field removed - PHP is now the default and only currency
 });
 
 type SettingsFormData = z.infer<typeof settingsSchema>;
@@ -37,7 +37,7 @@ interface StoreSettings {
   storeAddress: string;
   storePhone: string;
   taxRate: number;
-  currency: string;
+  // currency field removed - PHP is now the default and only currency
 }
 
 export default function Settings() {
@@ -54,7 +54,6 @@ export default function Settings() {
       storeAddress: '',
       storePhone: '',
       taxRate: 0,
-      currency: 'USD',
     },
   });
 
@@ -87,7 +86,8 @@ export default function Settings() {
       if (savedCurrency) {
         try {
           const parsed = JSON.parse(savedCurrency);
-          form.setValue('currency', parsed.code);
+          // Currency is now fixed to PHP, so we don't need to set it in the form
+          console.log('Currency is now fixed to PHP, ignoring saved currency:', parsed.code);
         } catch (e) {
           console.error('Failed to parse saved currency', e);
         }
@@ -110,10 +110,10 @@ export default function Settings() {
       // In a real app, you would save these settings to your database
       console.log('Saving settings:', data);
       
-      // Save currency to localStorage
-      const selectedCurrency = AVAILABLE_CURRENCIES.find(c => c.code === data.currency);
-      if (selectedCurrency) {
-        localStorage.setItem('pos_currency', JSON.stringify(selectedCurrency));
+      // Save currency to localStorage (fixed to PHP)
+      const phpCurrency = AVAILABLE_CURRENCIES.find(c => c.code === 'PHP');
+      if (phpCurrency) {
+        localStorage.setItem('pos_currency', JSON.stringify(phpCurrency));
       }
       
       // Show success message
@@ -128,46 +128,51 @@ export default function Settings() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading settings...</p>
+          <p className="mt-4 text-gray-600 dark:text-gray-400">Loading settings...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       {/* Navigation */}
-      <nav className="bg-white shadow">
+      <nav className="bg-white dark:bg-gray-800 shadow">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
             <div className="flex">
               <div className="flex-shrink-0 flex items-center">
                 <div className="bg-primary-600 w-8 h-8 rounded-full"></div>
-                <span className="ml-2 text-xl font-bold text-gray-900">POS Admin</span>
+                <span className="ml-2 text-xl font-bold text-gray-900 dark:text-white">POS Admin</span>
               </div>
               <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
-                <a href="/admin/dashboard" className="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+                <a href="/admin/dashboard" className="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-300 dark:hover:text-gray-200 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
                   Dashboard
                 </a>
-                <a href="/admin/products" className="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+                <a href="/admin/products" className="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-300 dark:hover:text-gray-200 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
                   Products
                 </a>
-                <a href="/admin/cashiers" className="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+                <a href="/admin/cashiers" className="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-300 dark:hover:text-gray-200 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
                   Cashiers
                 </a>
-                <a href="/admin/reports" className="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+                <a href="/admin/reports" className="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-300 dark:hover:text-gray-200 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
                   Reports
                 </a>
-                <a href="/admin/settings" className="border-primary-500 text-gray-900 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+                <a href="/admin/settings" className="border-primary-500 text-gray-900 dark:text-white inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
                   Settings
                 </a>
               </div>
             </div>
             <div className="hidden sm:ml-6 sm:flex sm:items-center">
-              <Button onClick={handleSignOut} variant="outline" size="sm">
+              <Button 
+                onClick={handleSignOut} 
+                variant="outline" 
+                size="sm"
+                className="text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
+              >
                 Sign out
               </Button>
             </div>
@@ -195,21 +200,21 @@ export default function Settings() {
             )}
 
             <div className="mb-6">
-              <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
-              <p className="mt-1 text-sm text-gray-500">Manage your store settings and preferences</p>
+              <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Settings</h1>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Manage your store settings and preferences</p>
             </div>
 
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
               {/* Settings Navigation */}
               <div className="lg:col-span-1">
-                <Card>
+                <Card className="bg-white dark:bg-gray-800">
                   <CardContent className="p-0">
                     <nav className="space-y-1">
                       <a
                         href="#"
-                        className="bg-primary-50 border-primary-500 text-primary-700 group flex items-center px-3 py-2 text-sm font-medium rounded-md border-l-4"
+                        className="bg-primary-50 border-primary-500 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300 group flex items-center px-3 py-2 text-sm font-medium rounded-md border-l-4"
                       >
-                        <svg className="text-primary-500 group-hover:text-primary-500 mr-3 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <svg className="text-primary-500 dark:text-primary-400 group-hover:text-primary-500 dark:group-hover:text-primary-300 mr-3 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                         </svg>
@@ -217,27 +222,27 @@ export default function Settings() {
                       </a>
                       <a
                         href="#"
-                        className="text-gray-700 hover:text-gray-900 hover:bg-gray-50 group flex items-center px-3 py-2 text-sm font-medium rounded-md border-l-4 border-transparent"
+                        className="text-gray-700 hover:text-gray-900 hover:bg-gray-50 dark:text-gray-300 dark:hover:text-gray-200 dark:hover:bg-gray-700 group flex items-center px-3 py-2 text-sm font-medium rounded-md border-l-4 border-transparent"
                       >
-                        <svg className="text-gray-400 group-hover:text-gray-500 mr-3 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                        <svg className="text-gray-400 group-hover:text-gray-500 dark:text-gray-500 dark:group-hover:text-gray-400 mr-3 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 0112 0v4h8z" />
                         </svg>
                         <span className="truncate">Security</span>
                       </a>
                       <a
                         href="#"
-                        className="text-gray-700 hover:text-gray-900 hover:bg-gray-50 group flex items-center px-3 py-2 text-sm font-medium rounded-md border-l-4 border-transparent"
+                        className="text-gray-700 hover:text-gray-900 hover:bg-gray-50 dark:text-gray-300 dark:hover:text-gray-200 dark:hover:bg-gray-700 group flex items-center px-3 py-2 text-sm font-medium rounded-md border-l-4 border-transparent"
                       >
-                        <svg className="text-gray-400 group-hover:text-gray-500 mr-3 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <svg className="text-gray-400 group-hover:text-gray-500 dark:text-gray-500 dark:group-hover:text-gray-400 mr-3 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
                         </svg>
                         <span className="truncate">Notifications</span>
                       </a>
                       <a
                         href="#"
-                        className="text-gray-700 hover:text-gray-900 hover:bg-gray-50 group flex items-center px-3 py-2 text-sm font-medium rounded-md border-l-4 border-transparent"
+                        className="text-gray-700 hover:text-gray-900 hover:bg-gray-50 dark:text-gray-300 dark:hover:text-gray-200 dark:hover:bg-gray-700 group flex items-center px-3 py-2 text-sm font-medium rounded-md border-l-4 border-transparent"
                       >
-                        <svg className="text-gray-400 group-hover:text-gray-500 mr-3 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <svg className="text-gray-400 group-hover:text-gray-500 dark:text-gray-500 dark:group-hover:text-gray-400 mr-3 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
                         </svg>
                         <span className="truncate">Receipts</span>
@@ -249,10 +254,10 @@ export default function Settings() {
 
               {/* Settings Form */}
               <div className="lg:col-span-2">
-                <Card>
+                <Card className="bg-white dark:bg-gray-800">
                   <CardHeader>
-                    <h3 className="text-lg leading-6 font-medium text-gray-900">General Settings</h3>
-                    <p className="mt-1 text-sm text-gray-500">Update your store information and preferences</p>
+                    <h3 className="text-lg leading-6 font-medium text-gray-900 dark:text-white">General Settings</h3>
+                    <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Update your store information and preferences</p>
                   </CardHeader>
                   <CardContent>
                     <Form {...form}>
@@ -262,11 +267,12 @@ export default function Settings() {
                             name="storeName"
                             render={({ field }) => (
                               <div className="space-y-2">
-                                <Label htmlFor="storeName">Store Name</Label>
+                                <Label htmlFor="storeName" className="text-gray-900 dark:text-white">Store Name</Label>
                                 <Input 
                                   {...field} 
                                   id="storeName"
                                   placeholder="Enter store name" 
+                                  className="bg-white dark:bg-gray-700 text-gray-900 dark:text-white border-gray-300 dark:border-gray-600"
                                 />
                               </div>
                             )}
@@ -276,11 +282,12 @@ export default function Settings() {
                             name="storePhone"
                             render={({ field }) => (
                               <div className="space-y-2">
-                                <Label htmlFor="storePhone">Store Phone</Label>
+                                <Label htmlFor="storePhone" className="text-gray-900 dark:text-white">Store Phone</Label>
                                 <Input 
                                   {...field} 
                                   id="storePhone"
                                   placeholder="Enter phone number" 
+                                  className="bg-white dark:bg-gray-700 text-gray-900 dark:text-white border-gray-300 dark:border-gray-600"
                                 />
                               </div>
                             )}
@@ -290,7 +297,7 @@ export default function Settings() {
                             name="taxRate"
                             render={({ field }) => (
                               <div className="space-y-2">
-                                <Label htmlFor="taxRate">Tax Rate (%)</Label>
+                                <Label htmlFor="taxRate" className="text-gray-900 dark:text-white">Tax Rate (%)</Label>
                                 <Input 
                                   {...field} 
                                   id="taxRate"
@@ -298,28 +305,8 @@ export default function Settings() {
                                   step="0.01" 
                                   placeholder="0.00" 
                                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => field.onChange(parseFloat(e.target.value) || 0)}
+                                  className="bg-white dark:bg-gray-700 text-gray-900 dark:text-white border-gray-300 dark:border-gray-600"
                                 />
-                              </div>
-                            )}
-                          />
-                          
-                          <FormField
-                            name="currency"
-                            render={({ field }) => (
-                              <div className="space-y-2">
-                                <Label htmlFor="currency">Currency</Label>
-                                <Select onValueChange={field.onChange} defaultValue={field.value}>
-                                  <SelectTrigger className="w-full">
-                                    <SelectValue placeholder="Select currency" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {AVAILABLE_CURRENCIES.map((currency) => (
-                                      <SelectItem key={currency.code} value={currency.code}>
-                                        {currency.name} ({currency.symbol})
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
                               </div>
                             )}
                           />
@@ -328,12 +315,12 @@ export default function Settings() {
                             name="storeAddress"
                             render={({ field }) => (
                               <div className="space-y-2 sm:col-span-2">
-                                <Label htmlFor="storeAddress">Store Address</Label>
+                                <Label htmlFor="storeAddress" className="text-gray-900 dark:text-white">Store Address</Label>
                                 <textarea
                                   {...field}
                                   id="storeAddress"
                                   rows={3}
-                                  className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                  className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 bg-white dark:bg-gray-700 text-gray-900 dark:text-white border-gray-300 dark:border-gray-600"
                                   placeholder="Enter store address"
                                 />
                               </div>
@@ -342,7 +329,11 @@ export default function Settings() {
                         </div>
                         
                         <div className="mt-6">
-                          <Button type="submit" disabled={saving}>
+                          <Button 
+                            type="submit" 
+                            disabled={saving}
+                            className="bg-primary-600 hover:bg-primary-700 text-white"
+                          >
                             {saving ? 'Saving...' : 'Save Settings'}
                           </Button>
                         </div>
@@ -352,21 +343,21 @@ export default function Settings() {
                 </Card>
 
                 {/* Additional Settings Sections */}
-                <Card className="mt-6">
+                <Card className="mt-6 bg-white dark:bg-gray-800">
                   <CardHeader>
-                    <h3 className="text-lg leading-6 font-medium text-gray-900">Receipt Settings</h3>
-                    <p className="mt-1 text-sm text-gray-500">Customize your receipt templates</p>
+                    <h3 className="text-lg leading-6 font-medium text-gray-900 dark:text-white">Receipt Settings</h3>
+                    <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Customize your receipt templates</p>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-4">
                       <div className="flex items-center justify-between">
                         <div>
-                          <h4 className="text-sm font-medium text-gray-900">Show Store Logo</h4>
-                          <p className="text-sm text-gray-500">Display your store logo on receipts</p>
+                          <h4 className="text-sm font-medium text-gray-900 dark:text-white">Show Store Logo</h4>
+                          <p className="text-sm text-gray-500 dark:text-gray-400">Display your store logo on receipts</p>
                         </div>
                         <button
                           type="button"
-                          className="bg-gray-200 relative inline-flex flex-shrink-0 h-6 w-11 border-2 border-transparent rounded-full cursor-pointer transition-colors ease-in-out duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+                          className="bg-gray-200 dark:bg-gray-700 relative inline-flex flex-shrink-0 h-6 w-11 border-2 border-transparent rounded-full cursor-pointer transition-colors ease-in-out duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
                           role="switch"
                         >
                           <span
@@ -378,12 +369,12 @@ export default function Settings() {
                       
                       <div className="flex items-center justify-between">
                         <div>
-                          <h4 className="text-sm font-medium text-gray-900">Show Customer Details</h4>
-                          <p className="text-sm text-gray-500">Include customer information on receipts</p>
+                          <h4 className="text-sm font-medium text-gray-900 dark:text-white">Show Customer Details</h4>
+                          <p className="text-sm text-gray-500 dark:text-gray-400">Include customer information on receipts</p>
                         </div>
                         <button
                           type="button"
-                          className="bg-gray-200 relative inline-flex flex-shrink-0 h-6 w-11 border-2 border-transparent rounded-full cursor-pointer transition-colors ease-in-out duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+                          className="bg-gray-200 dark:bg-gray-700 relative inline-flex flex-shrink-0 h-6 w-11 border-2 border-transparent rounded-full cursor-pointer transition-colors ease-in-out duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
                           role="switch"
                         >
                           <span

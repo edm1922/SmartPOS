@@ -10,22 +10,16 @@ export interface Currency {
   decimalPlaces: number;
 }
 
-// Default currency (USD)
+// Default currency (PHP)
 const DEFAULT_CURRENCY: Currency = {
-  code: 'USD',
-  symbol: '$',
-  name: 'US Dollar',
+  code: 'PHP',
+  symbol: '₱',
+  name: 'Philippine Peso',
   decimalPlaces: 2,
 };
 
-// Available currencies
+// Available currencies (PHP only)
 export const AVAILABLE_CURRENCIES: Currency[] = [
-  { code: 'USD', symbol: '$', name: 'US Dollar', decimalPlaces: 2 },
-  { code: 'EUR', symbol: '€', name: 'Euro', decimalPlaces: 2 },
-  { code: 'GBP', symbol: '£', name: 'British Pound', decimalPlaces: 2 },
-  { code: 'JPY', symbol: '¥', name: 'Japanese Yen', decimalPlaces: 0 },
-  { code: 'CAD', symbol: 'C$', name: 'Canadian Dollar', decimalPlaces: 2 },
-  { code: 'AUD', symbol: 'A$', name: 'Australian Dollar', decimalPlaces: 2 },
   { code: 'PHP', symbol: '₱', name: 'Philippine Peso', decimalPlaces: 2 },
 ];
 

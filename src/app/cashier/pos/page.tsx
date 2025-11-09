@@ -14,7 +14,6 @@ import {
   CardDescription
 } from '@/components/ui/Card';
 import { useCurrency } from '@/context/CurrencyContext';
-import { CurrencySelector } from '@/components/CurrencySelector';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
 
 interface Product {
@@ -529,17 +528,17 @@ export default function CashierPOS() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading POS terminal...</p>
+          <p className="mt-4 text-gray-600 dark:text-gray-400">Loading POS terminal...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col">
       <style jsx global>{`
         @keyframes fadeIn {
           from { opacity: 0; transform: translateY(-10px); }
@@ -561,17 +560,17 @@ export default function CashierPOS() {
       {/* Error Notification */}
       {error && (
         <div className="fixed top-4 right-4 z-50">
-          <Card className="bg-red-50 border-red-200">
+          <Card className="bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-800">
             <CardContent>
               <div className="flex items-center">
-                <svg className="h-5 w-5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg className="h-5 w-5 text-red-400 dark:text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 <div className="ml-3">
-                  <p className="text-sm font-medium text-red-800">{error}</p>
+                  <p className="text-sm font-medium text-red-800 dark:text-red-200">{error}</p>
                 </div>
                 <button
-                  className="ml-4 text-red-500 hover:text-red-700"
+                  className="ml-4 text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
                   onClick={() => setError(null)}
                 >
                   <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -587,14 +586,14 @@ export default function CashierPOS() {
       {/* Success Notification */}
       {successMessage && (
         <div className="fixed top-4 left-4 z-50 animate-fade-in">
-          <Card className="bg-green-50 border-green-200">
+          <Card className="bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-800">
             <CardContent>
               <div className="flex items-center">
-                <svg className="h-5 w-5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg className="h-5 w-5 text-green-400 dark:text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
                 <div className="ml-3">
-                  <p className="text-sm font-medium text-green-800">{successMessage}</p>
+                  <p className="text-sm font-medium text-green-800 dark:text-green-200">{successMessage}</p>
                 </div>
               </div>
             </CardContent>
@@ -603,13 +602,13 @@ export default function CashierPOS() {
       )}
 
       {/* Top Navigation */}
-      <nav className="bg-white shadow">
+      <nav className="bg-white dark:bg-gray-800 shadow">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
             <div className="flex">
               <div className="flex-shrink-0 flex items-center">
                 <div className="bg-primary-600 w-8 h-8 rounded-full"></div>
-                <span className="ml-2 text-xl font-bold text-gray-900">POS Terminal</span>
+                <span className="ml-2 text-xl font-bold text-gray-900 dark:text-white">POS Terminal</span>
               </div>
             </div>
             <div className="hidden sm:ml-6 sm:flex sm:items-center space-x-2">
@@ -618,11 +617,16 @@ export default function CashierPOS() {
                 onClick={() => setIsSettingsModalOpen(true)} 
                 variant="outline" 
                 size="sm" 
-                className="mr-2"
+                className="mr-2 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
               >
                 Settings (Ctrl+,)
               </Button>
-              <Button onClick={handleSignOut} variant="outline" size="sm" className="mr-2">
+              <Button 
+                onClick={handleSignOut} 
+                variant="outline" 
+                size="sm" 
+                className="mr-2 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
+              >
                 Sign out (Ctrl+S)
               </Button>
             </div>
@@ -637,13 +641,13 @@ export default function CashierPOS() {
           <div className="mb-6">
             <div className="relative rounded-md shadow-sm mb-4">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <svg className="h-5 w-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                <svg className="h-5 w-5 text-gray-400 dark:text-gray-500" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
                 </svg>
               </div>
               <input
                 type="text"
-                className="focus:ring-primary-500 focus:border-primary-500 block w-full pl-10 pr-12 sm:text-sm border-gray-300 rounded-md"
+                className="focus:ring-primary-500 focus:border-primary-500 block w-full pl-10 pr-12 sm:text-sm border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                 placeholder="Search products by name or barcode..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -653,18 +657,18 @@ export default function CashierPOS() {
             {/* Barcode Scanner Input */}
             <div className="relative rounded-md shadow-sm">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg className="h-5 w-5 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
                 </svg>
               </div>
               <input
                 ref={barcodeInputRef}
                 type="text"
-                className="focus:ring-primary-500 focus:border-primary-500 block w-full pl-10 pr-12 sm:text-sm border-gray-300 rounded-md"
+                className="focus:ring-primary-500 focus:border-primary-500 block w-full pl-10 pr-12 sm:text-sm border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                 placeholder="Scan barcode... (Ctrl+B to focus)"
               />
               <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-                <span className="text-xs text-gray-500">Enter↵</span>
+                <span className="text-xs text-gray-500 dark:text-gray-400">Enter↵</span>
               </div>
             </div>
           </div>
@@ -676,25 +680,25 @@ export default function CashierPOS() {
                 className="cursor-pointer"
                 onClick={() => addToCart(product)}
               >
-                <Card className="hover:shadow-lg transition-all duration-200">
+                <Card className="hover:shadow-lg transition-all duration-200 bg-white dark:bg-gray-800">
                   <CardContent className="p-4">
                     <div className="flex justify-between items-start">
                       <div>
-                        <h3 className="text-lg font-medium text-gray-900">{product.name}</h3>
-                        <p className="mt-1 text-sm text-gray-500">Barcode: {product.barcode || 'N/A'}</p>
+                        <h3 className="text-lg font-medium text-gray-900 dark:text-white">{product.name}</h3>
+                        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Barcode: {product.barcode || 'N/A'}</p>
                         <p className="mt-1 text-sm">
                           <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                             product.stock_quantity > 10 
-                              ? 'bg-green-100 text-green-800' 
+                              ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' 
                               : product.stock_quantity > 0 
-                                ? 'bg-yellow-100 text-yellow-800' 
-                                : 'bg-red-100 text-red-800'
+                                ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' 
+                                : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
                           }`}>
                             Stock: {product.stock_quantity}
                           </span>
                         </p>
                       </div>
-                      <p className="text-lg font-bold text-primary-600">{formatPrice(product.price)}</p>
+                      <p className="text-lg font-bold text-primary-600 dark:text-primary-400">{formatPrice(product.price)}</p>
                     </div>
                     <Button 
                       className={`mt-4 w-full ${successMessage && successMessage.includes(product.name) ? 'animate-pulse-once' : ''}`}
@@ -716,28 +720,28 @@ export default function CashierPOS() {
 
         {/* Cart Section */}
         <div className="w-full lg:w-96">
-          <Card>
+          <Card className="bg-white dark:bg-gray-800">
             <CardHeader>
-              <CardTitle className="text-lg font-medium text-gray-900">Shopping Cart</CardTitle>
+              <CardTitle className="text-lg font-medium text-gray-900 dark:text-white">Shopping Cart</CardTitle>
             </CardHeader>
             
             <CardContent className="p-4">
               {cart.length === 0 ? (
                 <div className="text-center py-8">
-                  <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
                   </svg>
-                  <h3 className="mt-2 text-sm font-medium text-gray-900">No items</h3>
-                  <p className="mt-1 text-sm text-gray-500">Add products to the cart</p>
+                  <h3 className="mt-2 text-sm font-medium text-gray-900 dark:text-white">No items</h3>
+                  <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Add products to the cart</p>
                 </div>
               ) : (
                 <div className="space-y-4">
                   {cart.map((item) => (
-                    <div key={item.id} className="flex items-center border-b border-gray-100 pb-4 last:border-0 last:pb-0">
+                    <div key={item.id} className="flex items-center border-b border-gray-100 dark:border-gray-700 pb-4 last:border-0 last:pb-0">
                       <div className="flex-1">
-                        <h3 className="text-sm font-medium text-gray-900">{item.name}</h3>
-                        <p className="text-sm text-gray-500">{formatPrice(item.price)} each</p>
-                        <p className="text-sm text-gray-500">Stock: {item.stock_quantity}</p>
+                        <h3 className="text-sm font-medium text-gray-900 dark:text-white">{item.name}</h3>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">{formatPrice(item.price)} each</p>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">Stock: {item.stock_quantity}</p>
                       </div>
                       <div className="flex items-center space-x-2">
                         <Button 
@@ -748,7 +752,7 @@ export default function CashierPOS() {
                         >
                           -
                         </Button>
-                        <span className="w-8 text-center text-sm font-medium">{item.quantity}</span>
+                        <span className="w-8 text-center text-sm font-medium text-gray-900 dark:text-white">{item.quantity}</span>
                         <Button 
                           onClick={() => updateQuantity(item.id, item.quantity + 1)}
                           variant="secondary"
@@ -775,10 +779,10 @@ export default function CashierPOS() {
               )}
             </CardContent>
             
-            <CardFooter className="p-4">
+            <CardFooter className="p-4 bg-white dark:bg-gray-800">
               <div className={`flex justify-between text-lg font-bold mb-4 ${successMessage ? 'animate-pulse-once' : ''}`}>
-                <span>Total:</span>
-                <span>{formatPrice(calculateTotal())}</span>
+                <span className="text-gray-900 dark:text-white">Total:</span>
+                <span className="text-gray-900 dark:text-white">{formatPrice(calculateTotal())}</span>
               </div>
               <Button 
                 className="w-full"
@@ -990,8 +994,6 @@ export default function CashierPOS() {
         size="md"
       >
         <div className="space-y-6">
-          <CurrencySelector />
-          
           <div className="flex justify-end space-x-3">
             <Button variant="secondary" onClick={() => setIsSettingsModalOpen(false)}>
               Close

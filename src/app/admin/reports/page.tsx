@@ -207,43 +207,48 @@ export default function Reports() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading reports...</p>
+          <p className="mt-4 text-gray-600 dark:text-gray-400">Loading reports...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       {/* Navigation */}
-      <nav className="bg-white shadow">
+      <nav className="bg-white dark:bg-gray-800 shadow">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
             <div className="flex">
               <div className="flex-shrink-0 flex items-center">
                 <div className="bg-primary-600 w-8 h-8 rounded-full"></div>
-                <span className="ml-2 text-xl font-bold text-gray-900">POS Admin</span>
+                <span className="ml-2 text-xl font-bold text-gray-900 dark:text-white">POS Admin</span>
               </div>
               <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
-                <a href="/admin/dashboard" className="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+                <a href="/admin/dashboard" className="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-300 dark:hover:text-gray-200 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
                   Dashboard
                 </a>
-                <a href="/admin/products" className="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+                <a href="/admin/products" className="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-300 dark:hover:text-gray-200 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
                   Products
                 </a>
-                <a href="/admin/cashiers" className="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+                <a href="/admin/cashiers" className="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-300 dark:hover:text-gray-200 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
                   Cashiers
                 </a>
-                <a href="/admin/reports" className="border-primary-500 text-gray-900 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+                <a href="/admin/reports" className="border-primary-500 text-gray-900 dark:text-white inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
                   Reports
                 </a>
               </div>
             </div>
             <div className="hidden sm:ml-6 sm:flex sm:items-center">
-              <Button onClick={handleSignOut} variant="outline" size="sm">
+              <Button 
+                onClick={handleSignOut} 
+                variant="outline" 
+                size="sm"
+                className="text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
+              >
                 Sign out
               </Button>
             </div>
@@ -255,202 +260,162 @@ export default function Reports() {
       <main>
         <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
           <div className="px-4 py-6 sm:px-0">
-            {error && (
-              <div className="mb-6 bg-red-50 border border-red-200 rounded-md p-4">
-                <div className="flex">
-                  <div className="flex-shrink-0">
-                    <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                    </svg>
-                  </div>
-                  <div className="ml-3">
-                    <h3 className="text-sm font-medium text-red-800">{error}</h3>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <div className="flex justify-between items-center mb-6">
-              <h1 className="text-2xl font-bold text-gray-900">Sales Reports</h1>
-              <div className="flex space-x-2">
-                <Button 
-                  variant={dateRange === 'today' ? 'default' : 'secondary'}
-                  onClick={() => setDateRange('today')}
-                >
-                  Today
-                </Button>
-                <Button 
-                  variant={dateRange === 'week' ? 'default' : 'secondary'}
-                  onClick={() => setDateRange('week')}
-                >
-                  This Week
-                </Button>
-                <Button 
-                  variant={dateRange === 'month' ? 'default' : 'secondary'}
-                  onClick={() => setDateRange('month')}
-                >
-                  This Month
-                </Button>
-              </div>
+            <div className="mb-6">
+              <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Reports</h1>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-gray-400">View sales data and transaction history</p>
             </div>
 
             {/* Summary Cards */}
-            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4 mb-8">
-              <Card>
-                <CardContent className="p-5">
+            <div className="grid grid-cols-1 gap-6 mb-6 sm:grid-cols-3">
+              <Card className="bg-white dark:bg-gray-800">
+                <CardContent className="p-6">
                   <div className="flex items-center">
-                    <div className="flex-shrink-0 bg-primary-100 rounded-md p-3">
-                      <svg className="h-6 w-6 text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <div className="flex-shrink-0 p-3 bg-primary-100 dark:bg-primary-900/30 rounded-lg">
+                      <svg className="h-6 w-6 text-primary-600 dark:text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
                     </div>
-                    <div className="ml-5 w-0 flex-1">
-                      <dl>
-                        <dt className="text-sm font-medium text-gray-500 truncate">Total Sales</dt>
-                        <dd className="flex items-baseline">
-                          <div className="text-2xl font-semibold text-gray-900">${getTotalSales().toFixed(2)}</div>
-                        </dd>
-                      </dl>
+                    <div className="ml-4">
+                      <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">Total Sales</h3>
+                      <p className="text-2xl font-semibold text-gray-900 dark:text-white">${getTotalSales().toFixed(2)}</p>
                     </div>
                   </div>
                 </CardContent>
               </Card>
 
-              <Card>
-                <CardContent className="p-5">
+              <Card className="bg-white dark:bg-gray-800">
+                <CardContent className="p-6">
                   <div className="flex items-center">
-                    <div className="flex-shrink-0 bg-primary-100 rounded-md p-3">
-                      <svg className="h-6 w-6 text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+                    <div className="flex-shrink-0 p-3 bg-green-100 dark:bg-green-900/30 rounded-lg">
+                      <svg className="h-6 w-6 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
                       </svg>
                     </div>
-                    <div className="ml-5 w-0 flex-1">
-                      <dl>
-                        <dt className="text-sm font-medium text-gray-500 truncate">Transactions</dt>
-                        <dd className="flex items-baseline">
-                          <div className="text-2xl font-semibold text-gray-900">{getTotalTransactions()}</div>
-                        </dd>
-                      </dl>
+                    <div className="ml-4">
+                      <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">Transactions</h3>
+                      <p className="text-2xl font-semibold text-gray-900 dark:text-white">{getTotalTransactions()}</p>
                     </div>
                   </div>
                 </CardContent>
               </Card>
 
-              <Card>
-                <CardContent className="p-5">
+              <Card className="bg-white dark:bg-gray-800">
+                <CardContent className="p-6">
                   <div className="flex items-center">
-                    <div className="flex-shrink-0 bg-primary-100 rounded-md p-3">
-                      <svg className="h-6 w-6 text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                    <div className="flex-shrink-0 p-3 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
+                      <svg className="h-6 w-6 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                       </svg>
                     </div>
-                    <div className="ml-5 w-0 flex-1">
-                      <dl>
-                        <dt className="text-sm font-medium text-gray-500 truncate">Avg. Transaction</dt>
-                        <dd className="flex items-baseline">
-                          <div className="text-2xl font-semibold text-gray-900">${getAverageTransactionValue().toFixed(2)}</div>
-                        </dd>
-                      </dl>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardContent className="p-5">
-                  <div className="flex items-center">
-                    <div className="flex-shrink-0 bg-primary-100 rounded-md p-3">
-                      <svg className="h-6 w-6 text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                    </div>
-                    <div className="ml-5 w-0 flex-1">
-                      <dl>
-                        <dt className="text-sm font-medium text-gray-500 truncate">Period</dt>
-                        <dd className="flex items-baseline">
-                          <div className="text-2xl font-semibold text-gray-900 capitalize">{dateRange}</div>
-                        </dd>
-                      </dl>
+                    <div className="ml-4">
+                      <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">Period</h3>
+                      <p className="text-2xl font-semibold text-gray-900 dark:text-white capitalize">{dateRange}</p>
                     </div>
                   </div>
                 </CardContent>
               </Card>
             </div>
 
-            {/* Sales Report Chart */}
-            <div className="mb-8">
-              <Card>
-                <CardHeader>
-                  <h3 className="text-lg leading-6 font-medium text-gray-900">Sales Trend</h3>
-                </CardHeader>
-                <CardContent>
-                  {salesReport.length > 0 ? (
-                    <div className="h-64 flex items-end space-x-2">
-                      {salesReport.map((report, index) => (
-                        <div key={index} className="flex flex-col items-center flex-1">
-                          <div 
-                            className="w-full bg-primary-600 rounded-t hover:bg-primary-700 transition-colors"
-                            style={{ height: `${(report.total_sales / Math.max(...salesReport.map(r => r.total_sales))) * 200}px` }}
-                          ></div>
-                          <div className="text-xs text-gray-500 mt-2 truncate w-full text-center">
-                            {new Date(report.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="h-64 flex items-center justify-center text-gray-500">
-                      No sales data available for the selected period
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+            {/* Date Range Selector */}
+            <div className="mb-6">
+              <div className="inline-flex rounded-md shadow-sm" role="group">
+                <button
+                  type="button"
+                  className={`px-4 py-2 text-sm font-medium rounded-l-lg border ${
+                    dateRange === 'today'
+                      ? 'bg-primary-600 text-white border-primary-600'
+                      : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700'
+                  }`}
+                  onClick={() => setDateRange('today')}
+                >
+                  Today
+                </button>
+                <button
+                  type="button"
+                  className={`px-4 py-2 text-sm font-medium border-t border-b ${
+                    dateRange === 'week'
+                      ? 'bg-primary-600 text-white border-primary-600'
+                      : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700'
+                  }`}
+                  onClick={() => setDateRange('week')}
+                >
+                  Last 7 Days
+                </button>
+                <button
+                  type="button"
+                  className={`px-4 py-2 text-sm font-medium rounded-r-lg border ${
+                    dateRange === 'month'
+                      ? 'bg-primary-600 text-white border-primary-600'
+                      : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700'
+                  }`}
+                  onClick={() => setDateRange('month')}
+                >
+                  Last 30 Days
+                </button>
+              </div>
             </div>
+
+            {/* Sales Chart */}
+            <Card className="mb-6 bg-white dark:bg-gray-800">
+              <CardHeader>
+                <CardTitle className="text-lg font-medium text-gray-900 dark:text-white">Sales Trend</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="h-64 flex items-end space-x-2">
+                  {salesReport.map((report, index) => (
+                    <div key={index} className="flex flex-col items-center flex-1">
+                      <div 
+                        className="w-full bg-primary-600 dark:bg-primary-500 rounded-t"
+                        style={{ height: `${(report.total_sales / Math.max(...salesReport.map(r => r.total_sales))) * 100}%` }}
+                      ></div>
+                      <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                        {new Date(report.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
 
             {/* Recent Transactions */}
-            <Card>
+            <Card className="bg-white dark:bg-gray-800">
               <CardHeader>
-                <h3 className="text-lg leading-6 font-medium text-gray-900">Recent Transactions</h3>
+                <CardTitle className="text-lg font-medium text-gray-900 dark:text-white">Recent Transactions</CardTitle>
               </CardHeader>
               <CardContent>
                 <Table>
                   <TableHeader>
-                    <TableRow>
-                      <TableHead>Transaction ID</TableHead>
-                      <TableHead>Cashier</TableHead>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Payment Method</TableHead>
-                      <TableHead className="text-right">Amount</TableHead>
+                    <TableRow className="bg-gray-50 dark:bg-gray-700">
+                      <TableHead className="text-gray-900 dark:text-white">Date</TableHead>
+                      <TableHead className="text-gray-900 dark:text-white">Cashier</TableHead>
+                      <TableHead className="text-gray-900 dark:text-white">Payment Method</TableHead>
+                      <TableHead className="text-right text-gray-900 dark:text-white">Amount</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {transactions.map((transaction) => (
-                      <TableRow key={transaction.id}>
-                        <TableCell className="font-medium text-gray-900">#{transaction.id.slice(0, 8)}</TableCell>
-                        <TableCell>{transaction.cashier?.email || 'Unknown'}</TableCell>
-                        <TableCell>{new Date(transaction.created_at).toLocaleDateString()}</TableCell>
-                        <TableCell>
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 capitalize">
-                            {transaction.payment_method}
-                          </span>
+                      <TableRow key={transaction.id} className="border-b border-gray-200 dark:border-gray-700">
+                        <TableCell className="text-gray-500 dark:text-gray-400">
+                          {new Date(transaction.created_at).toLocaleString()}
                         </TableCell>
-                        <TableCell className="text-right font-medium">${transaction.total_amount.toFixed(2)}</TableCell>
+                        <TableCell className="font-medium text-gray-900 dark:text-white">
+                          {transaction.cashier?.email || 'Unknown'}
+                        </TableCell>
+                        <TableCell className="text-gray-500 dark:text-gray-400 capitalize">
+                          {transaction.payment_method}
+                        </TableCell>
+                        <TableCell className="text-right font-medium text-gray-900 dark:text-white">
+                          ${transaction.total_amount.toFixed(2)}
+                        </TableCell>
                       </TableRow>
                     ))}
-                    {transactions.length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={5} className="text-center text-gray-500 py-4">
-                        No transactions found for the selected period
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </div>
         </div>
-      </div>
-    </main>
-  </div>
+      </main>
+    </div>
 );
 }

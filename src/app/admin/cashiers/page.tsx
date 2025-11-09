@@ -287,13 +287,6 @@ export default function CashierManagement() {
           </div>
         </div>
       </main>
-
-      {/* Add Cashier Modal */}
-      <AddCashierModal 
-        isOpen={isModalOpen} 
-        onClose={() => setIsModalOpen(false)} 
-        onCashierAdded={handleCashierAdded}
-      />
     </div>
   );
 }
@@ -498,52 +491,40 @@ Generated on: ${new Date().toLocaleString()}`;
             </div>
           </div>
           
-          <div className="border border-gray-200 rounded-md p-4">
-            <h4 className="text-lg font-medium text-gray-900 mb-4">Account Credentials</h4>
+          <div className="border border-gray-200 dark:border-gray-700 rounded-md p-4">
             <div className="space-y-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700">Username</label>
-                <div className="mt-1 block w-full rounded-md border-gray-300 bg-gray-50 px-3 py-2 text-gray-900">
-                  {createdCashier.username}
-                </div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Username</label>
+                <div className="mt-1 text-sm text-gray-900 dark:text-white">{createdCashier.username}</div>
               </div>
               
               <div>
-                <label className="block text-sm font-medium text-gray-700">Password</label>
-                <div className="mt-1 block w-full rounded-md border-gray-300 bg-gray-50 px-3 py-2 text-gray-900 font-mono">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Password</label>
+                <div className="mt-1 text-sm font-mono text-gray-900 dark:text-white bg-gray-50 dark:bg-gray-800 p-2 rounded">
                   {createdCashier.password}
                 </div>
               </div>
               
               {createdCashier.email && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Email</label>
-                  <div className="mt-1 block w-full rounded-md border-gray-300 bg-gray-50 px-3 py-2 text-gray-900">
-                    {createdCashier.email}
-                  </div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Email</label>
+                  <div className="mt-1 text-sm text-gray-900 dark:text-white">{createdCashier.email}</div>
                 </div>
               )}
             </div>
           </div>
           
           <div className="flex flex-col sm:flex-row gap-3">
-            <Button onClick={downloadPassword} variant="default" className="flex-1">
-              <svg className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-              </svg>
-              Download as File
+            <Button onClick={downloadPassword} className="flex-1">
+              Download Credentials
             </Button>
-            
-            <Button onClick={printPassword} variant="outline" className="flex-1">
-              <svg className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-              </svg>
+            <Button onClick={printPassword} variant="secondary" className="flex-1">
               Print Credentials
             </Button>
           </div>
           
-          <div className="flex justify-end">
-            <Button onClick={handleClose} variant="secondary">
+          <div className="text-center">
+            <Button onClick={handleClose} variant="outline">
               Close
             </Button>
           </div>
@@ -556,23 +537,14 @@ Generated on: ${new Date().toLocaleString()}`;
     <Modal 
       isOpen={isOpen} 
       onClose={handleClose} 
-      title="Add Cashier"
+      title="Add New Cashier"
       size="md"
     >
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
           {error && (
-            <div className="bg-red-50 border border-red-200 rounded-md p-3">
-              <div className="flex">
-                <div className="flex-shrink-0">
-                  <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                  </svg>
-                </div>
-                <div className="ml-3">
-                  <h3 className="text-sm font-medium text-red-800">{error}</h3>
-                </div>
-              </div>
+            <div className="bg-destructive/10 border border-destructive/20 rounded-md p-3">
+              <p className="text-sm text-destructive">{error}</p>
             </div>
           )}
           
@@ -584,9 +556,9 @@ Generated on: ${new Date().toLocaleString()}`;
                 <Input 
                   {...field} 
                   id="username"
-                  type="text" 
                   placeholder="Enter username" 
                 />
+                <p className="text-sm text-muted-foreground">Enter a unique username for the cashier</p>
               </div>
             )}
           />
@@ -595,24 +567,24 @@ Generated on: ${new Date().toLocaleString()}`;
             name="email"
             render={({ field }) => (
               <div className="space-y-2">
-                <Label htmlFor="email">Email (optional)</Label>
+                <Label htmlFor="email">Email (Optional)</Label>
                 <Input 
                   {...field} 
                   id="email"
-                  type="email" 
-                  placeholder="Enter email (optional)" 
+                  type="email"
+                  placeholder="Enter email address" 
                 />
-                <p className="text-sm text-gray-500">Email is optional for password reset and communication</p>
+                <p className="text-sm text-muted-foreground">Optional email address for the cashier</p>
               </div>
             )}
           />
           
-          <div className="mt-6 flex justify-end space-x-3">
+          <div className="flex justify-end space-x-3">
             <Button variant="secondary" onClick={handleClose} type="button">
               Cancel
             </Button>
             <Button type="submit" disabled={loading}>
-              {loading ? 'Adding...' : 'Add Cashier'}
+              {loading ? 'Creating...' : 'Create Cashier'}
             </Button>
           </div>
         </form>
@@ -631,3 +603,4 @@ const generateRandomPassword = (length: number = 12): string => {
   }
   return password;
 };
+)};

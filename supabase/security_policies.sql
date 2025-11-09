@@ -4,6 +4,7 @@ ALTER TABLE products DISABLE ROW LEVEL SECURITY;
 ALTER TABLE transactions DISABLE ROW LEVEL SECURITY;
 ALTER TABLE transaction_items DISABLE ROW LEVEL SECURITY;
 ALTER TABLE activity_logs DISABLE ROW LEVEL SECURITY;
+ALTER TABLE settings DISABLE ROW LEVEL SECURITY;  -- Add settings table
 
 -- Then enable RLS on all tables
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
@@ -11,6 +12,7 @@ ALTER TABLE products ENABLE ROW LEVEL SECURITY;  -- Enable RLS for products
 ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE transaction_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE activity_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE settings ENABLE ROW LEVEL SECURITY;  -- Enable RLS for settings
 
 -- Users table policies
 -- Users can only view their own record
@@ -52,6 +54,32 @@ CREATE POLICY "Allow cashier POS access" ON products
 -- Admins can manage products (checking role from database)
 DROP POLICY IF EXISTS "Admins can manage products" ON products;
 CREATE POLICY "Admins can manage products" ON products
+  FOR ALL USING (
+    EXISTS (
+      SELECT 1 FROM public.users 
+      WHERE id = auth.uid() AND role = 'admin' AND is_active = true
+    )
+  ) WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.users 
+      WHERE id = auth.uid() AND role = 'admin' AND is_active = true
+    )
+  );
+
+-- Settings table policies
+-- Only admins can view settings
+DROP POLICY IF EXISTS "Admins can view settings" ON settings;
+CREATE POLICY "Admins can view settings" ON settings
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM public.users 
+      WHERE id = auth.uid() AND role = 'admin' AND is_active = true
+    )
+  );
+
+-- Only admins can manage settings
+DROP POLICY IF EXISTS "Admins can manage settings" ON settings;
+CREATE POLICY "Admins can manage settings" ON settings
   FOR ALL USING (
     EXISTS (
       SELECT 1 FROM public.users 
@@ -152,6 +180,7 @@ GRANT SELECT ON TABLE products TO anon; -- Allow anonymous SELECT for cashier PO
 GRANT ALL ON TABLE transactions TO authenticated;
 GRANT ALL ON TABLE transaction_items TO authenticated;
 GRANT ALL ON TABLE activity_logs TO authenticated;
+GRANT ALL ON TABLE settings TO authenticated;  -- Grant permissions for settings table
 
 -- Grant usage on auth schema (needed for auth.uid() and auth.role())
 GRANT USAGE ON SCHEMA auth TO authenticated;

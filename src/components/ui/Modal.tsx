@@ -73,21 +73,21 @@ export const Modal: React.FC<ModalProps> = ({
 
         {/* Modal content with improved styling and animation */}
         <div 
-          className={`inline-block align-bottom bg-white rounded-2xl text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle w-full ${sizeClasses[size]} duration-300 ease-out scale-100 opacity-100`} 
+          className={`inline-block align-bottom bg-white dark:bg-gray-800 rounded-2xl text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle w-full ${sizeClasses[size]} duration-300 ease-out scale-100 opacity-100`} 
           onClick={(e) => e.stopPropagation()}
         >
           {/* Modal header with improved styling */}
-          <div className="px-6 pt-6 pb-4 border-b border-gray-100">
+          <div className="px-6 pt-6 pb-4 border-b border-gray-100 dark:border-gray-700">
             <div className="flex justify-between items-center">
               {title && (
-                <h3 className="text-xl font-semibold text-gray-900">
+                <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
                   {title}
                 </h3>
               )}
               {showCloseButton && (
                 <button
                   type="button"
-                  className="text-gray-400 hover:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-500 rounded-full p-1 transition-colors duration-200"
+                  className="text-gray-400 hover:text-gray-500 dark:text-gray-300 dark:hover:text-gray-200 focus:outline-none focus:ring-2 focus:ring-primary-500 rounded-full p-1 transition-colors duration-200"
                   onClick={onClose}
                 >
                   <span className="sr-only">Close</span>
@@ -106,7 +106,7 @@ export const Modal: React.FC<ModalProps> = ({
 
           {/* Modal footer with improved styling */}
           {footer && (
-            <div className="px-6 py-4 bg-gray-50 rounded-b-2xl flex justify-end space-x-3">
+            <div className="px-6 py-4 bg-gray-50 dark:bg-gray-700/50 rounded-b-2xl flex justify-end space-x-3">
               {footer}
             </div>
           )}

@@ -79,4 +79,26 @@
     color: hsl(var(--foreground));
     font-feature-settings: "rlig" 1, "calt" 1;
   }
+  
+  /* Custom styles for input fields to ensure visibility with dark background */
+  input, textarea, select {
+    background-color: #1e1e2f;  /* Dark background */
+    color: #ffffff;             /* White text for readability */
+    border: 1px solid #444;     /* Subtle border for visibility */
+    padding: 8px;
+    border-radius: 6px;
+  }
+
+  input::placeholder,
+  textarea::placeholder,
+  select::placeholder {
+    color: #aaaaaa;             /* Light gray placeholder */
+  }
+
+  input:focus,
+  textarea:focus,
+  select:focus {
+    outline: none;
+    border-color: #4e9eff;      /* Highlight border on focus */
+  }
 }

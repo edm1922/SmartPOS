@@ -26,6 +26,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Form, FormField } from '@/components/ui/Form';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -672,11 +673,10 @@ const ProductModal: React.FC<ProductModalProps> = ({ isOpen, onClose, product, o
                 render={({ field }) => (
                   <div className="space-y-2">
                     <Label htmlFor="description">Description</Label>
-                    <textarea
+                    <Textarea
                       {...field}
                       id="description"
                       rows={4}
-                      className="flex h-20 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                       placeholder="Enter product description"
                     />
                     <p className="text-sm text-muted-foreground">Enter a detailed product description</p>

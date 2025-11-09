@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { supabase, supabaseDB } from '@/lib/supabaseClient';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
+import { ThemeToggle } from '@/components/ui/ThemeToggle';
 
 interface Product {
   id: string;
@@ -168,42 +169,43 @@ export default function AdminDashboard() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading dashboard...</p>
+          <p className="mt-4 text-gray-600 dark:text-gray-400">Loading dashboard...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       {/* Navigation */}
-      <nav className="bg-white shadow">
+      <nav className="bg-white dark:bg-gray-800 shadow">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
             <div className="flex">
               <div className="flex-shrink-0 flex items-center">
                 <div className="bg-primary-600 w-8 h-8 rounded-full"></div>
-                <span className="ml-2 text-xl font-bold text-gray-900">POS Admin</span>
+                <span className="ml-2 text-xl font-bold text-gray-900 dark:text-white">POS Admin</span>
               </div>
               <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
-                <a href="/admin/dashboard" className="border-primary-500 text-gray-900 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+                <a href="/admin/dashboard" className="border-primary-500 text-gray-900 dark:text-white inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
                   Dashboard
                 </a>
-                <a href="/admin/products" className="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+                <a href="/admin/products" className="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-300 dark:hover:text-gray-200 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
                   Products
                 </a>
-                <a href="/admin/cashiers" className="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+                <a href="/admin/cashiers" className="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-300 dark:hover:text-gray-200 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
                   Cashiers
                 </a>
-                <a href="/admin/reports" className="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+                <a href="/admin/reports" className="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-300 dark:hover:text-gray-200 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
                   Reports
                 </a>
               </div>
             </div>
-            <div className="hidden sm:ml-6 sm:flex sm:items-center">
+            <div className="hidden sm:ml-6 sm:flex sm:items-center space-x-2">
+              <ThemeToggle />
               <Button onClick={handleSignOut} variant="outline" size="sm">
                 Sign out
               </Button>
@@ -216,23 +218,23 @@ export default function AdminDashboard() {
       <main>
         <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
           <div className="px-4 py-6 sm:px-0">
-            <h1 className="text-2xl font-bold text-gray-900 mb-6">Admin Dashboard</h1>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">Admin Dashboard</h1>
             
             <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
               {/* Stats cards */}
               <Card>
                 <CardContent className="p-5">
                   <div className="flex items-center">
-                    <div className="flex-shrink-0 bg-primary-100 rounded-lg p-3">
+                    <div className="flex-shrink-0 bg-primary-100 dark:bg-primary-900/30 rounded-lg p-3">
                       <svg className="h-6 w-6 text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
                     </div>
                     <div className="ml-5 w-0 flex-1">
                       <dl>
-                        <dt className="text-sm font-medium text-gray-500 truncate">Total Revenue</dt>
+                        <dt className="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Total Revenue</dt>
                         <dd className="flex items-baseline">
-                          <div className="text-2xl font-bold text-gray-900">${stats.totalRevenue.toFixed(2)}</div>
+                          <div className="text-2xl font-bold text-gray-900 dark:text-white">${stats.totalRevenue.toFixed(2)}</div>
                         </dd>
                       </dl>
                     </div>
@@ -243,16 +245,16 @@ export default function AdminDashboard() {
               <Card>
                 <CardContent className="p-5">
                   <div className="flex items-center">
-                    <div className="flex-shrink-0 bg-primary-100 rounded-lg p-3">
+                    <div className="flex-shrink-0 bg-primary-100 dark:bg-primary-900/30 rounded-lg p-3">
                       <svg className="h-6 w-6 text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
                       </svg>
                     </div>
                     <div className="ml-5 w-0 flex-1">
                       <dl>
-                        <dt className="text-sm font-medium text-gray-500 truncate">Products</dt>
+                        <dt className="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Products</dt>
                         <dd className="flex items-baseline">
-                          <div className="text-2xl font-bold text-gray-900">{stats.productCount}</div>
+                          <div className="text-2xl font-bold text-gray-900 dark:text-white">{stats.productCount}</div>
                         </dd>
                       </dl>
                     </div>
@@ -263,16 +265,16 @@ export default function AdminDashboard() {
               <Card>
                 <CardContent className="p-5">
                   <div className="flex items-center">
-                    <div className="flex-shrink-0 bg-primary-100 rounded-lg p-3">
+                    <div className="flex-shrink-0 bg-primary-100 dark:bg-primary-900/30 rounded-lg p-3">
                       <svg className="h-6 w-6 text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                       </svg>
                     </div>
                     <div className="ml-5 w-0 flex-1">
                       <dl>
-                        <dt className="text-sm font-medium text-gray-500 truncate">Cashiers</dt>
+                        <dt className="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Cashiers</dt>
                         <dd className="flex items-baseline">
-                          <div className="text-2xl font-bold text-gray-900">{stats.cashierCount}</div>
+                          <div className="text-2xl font-bold text-gray-900 dark:text-white">{stats.cashierCount}</div>
                         </dd>
                       </dl>
                     </div>
@@ -285,29 +287,29 @@ export default function AdminDashboard() {
             <div className="mt-8">
               <Card>
                 <CardHeader>
-                  <h3 className="text-lg font-semibold text-gray-900">Recent Activity</h3>
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Recent Activity</h3>
                 </CardHeader>
                 <CardContent className="p-0">
                   {recentActivity.length > 0 ? (
                     <ul className="divide-y divide-gray-200">
                       {recentActivity.map((activity) => (
                         <li key={activity.id}>
-                          <div className="block hover:bg-gray-50 transition-colors duration-150">
+                          <div className="block hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors duration-150">
                             <div className="flex items-center px-6 py-4">
                               <div className="min-w-0 flex-1 flex items-center">
                                 <div className="min-w-0 flex-1 px-4 md:grid md:grid-cols-2 md:gap-4">
                                   <div>
-                                    <p className="text-sm font-medium text-primary-600 truncate">{activity.action}</p>
-                                    <p className="mt-1 text-sm text-gray-500">
+                                    <p className="text-sm font-medium text-primary-600 dark:text-primary-400 truncate">{activity.action}</p>
+                                    <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
                                       <span className="truncate">{activity.description}</span>
                                     </p>
                                   </div>
                                   <div className="hidden md:block">
                                     <div>
-                                      <p className="text-sm text-gray-900">
+                                      <p className="text-sm text-gray-900 dark:text-gray-200">
                                         {new Date(activity.timestamp).toLocaleString()}
                                       </p>
-                                      <p className="text-xs text-gray-500 mt-1">
+                                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                                         {activity.type === 'transaction' ? 'Transaction' : 'Activity Log'}
                                       </p>
                                     </div>
@@ -320,7 +322,7 @@ export default function AdminDashboard() {
                       ))}
                     </ul>
                   ) : (
-                    <div className="px-6 py-4 text-center text-gray-500">
+                    <div className="px-6 py-4 text-center text-gray-500 dark:text-gray-400">
                       No recent activity
                     </div>
                   )}

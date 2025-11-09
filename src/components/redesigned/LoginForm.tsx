@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
-import { Label } from "@/components/ui/Label";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 
 interface LoginFormProps {
@@ -131,7 +131,7 @@ export function LoginForm({ title, subtitle, onSubmit, loading, error, className
           </CardContent>
           <CardFooter className="flex justify-center">
             <p className="text-xs text-gray-500">
-              &copy; {new Date().getFullYear()} ACME Store. All rights reserved.
+              &copy; {new Date().getFullYear()} AJ Softdrive Store. All rights reserved.
             </p>
           </CardFooter>
         </Card>

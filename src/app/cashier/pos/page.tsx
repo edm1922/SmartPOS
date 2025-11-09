@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/Card';
 import { useCurrency } from '@/context/CurrencyContext';
 import { CurrencySelector } from '@/components/CurrencySelector';
+import { ThemeToggle } from '@/components/ui/ThemeToggle';
 
 interface Product {
   id: string;
@@ -611,7 +612,8 @@ export default function CashierPOS() {
                 <span className="ml-2 text-xl font-bold text-gray-900">POS Terminal</span>
               </div>
             </div>
-            <div className="hidden sm:ml-6 sm:flex sm:items-center">
+            <div className="hidden sm:ml-6 sm:flex sm:items-center space-x-2">
+              <ThemeToggle />
               <Button 
                 onClick={() => setIsSettingsModalOpen(true)} 
                 variant="outline" 
@@ -901,7 +903,7 @@ export default function CashierPOS() {
         {receiptData && (
           <div className="bg-white p-6 rounded-lg">
             <div className="text-center mb-6">
-              <h2 className="text-xl font-bold">ACME STORE</h2>
+              <h2 className="text-xl font-bold">AJ SOFTDRIVE STORE</h2>
               <p className="text-gray-600">123 Main Street, City, State 12345</p>
               <p className="text-gray-600">Phone: (555) 123-4567</p>
             </div>

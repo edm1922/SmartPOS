@@ -38,7 +38,7 @@ export const Receipt: React.FC<ReceiptProps> = ({
     <div className="bg-white p-6 rounded-lg max-w-md mx-auto">
       {/* Store Header */}
       <div className="text-center border-b border-gray-200 pb-4 mb-4">
-        <h2 className="text-xl font-bold text-gray-900">ACME STORE</h2>
+        <h2 className="text-xl font-bold text-gray-900">AJ SOFTDRIVE STORE</h2>
         <p className="text-gray-600 text-sm">123 Main Street, City, State 12345</p>
         <p className="text-gray-600 text-sm">Phone: (555) 123-4567</p>
       </div>

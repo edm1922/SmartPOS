@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent } from '@/components/ui/Card';
+import { ThemeToggle } from '@/components/ui/ThemeToggle';
 
 interface LoginFormProps {
   title: string;
@@ -51,7 +52,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-50 to-gray-100 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-gradient-to-br from-primary-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <div className="flex justify-center">
           <div className="bg-primary-600 w-16 h-16 rounded-2xl flex items-center justify-center shadow-lg">
@@ -60,16 +61,23 @@ export const LoginForm: React.FC<LoginFormProps> = ({
             </svg>
           </div>
         </div>
-        <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-          {title}
-        </h2>
-        <p className="mt-2 text-center text-sm text-gray-600">
-          {subtitle}
-        </p>
+        <div className="flex justify-between items-center mt-6">
+          <div>
+            <h2 className="text-center text-3xl font-extrabold text-gray-900 dark:text-white">
+              {title}
+            </h2>
+            <p className="mt-2 text-center text-sm text-gray-600 dark:text-gray-300">
+              {subtitle}
+            </p>
+          </div>
+          <div className="absolute top-4 right-4">
+            <ThemeToggle />
+          </div>
+        </div>
       </div>
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <Card className="shadow-xl">
+        <Card className="shadow-xl bg-white dark:bg-gray-800">
           <CardContent className="py-8 px-4 sm:px-10">
             <form 
               className="space-y-6" 
@@ -82,7 +90,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
               }}
             >
               {error && (
-                <div className="rounded-md bg-red-50 border border-red-200 p-4">
+                <div className="rounded-md bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 p-4">
                   <div className="flex">
                     <div className="flex-shrink-0">
                       <svg className="h-5 w-5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -90,10 +98,10 @@ export const LoginForm: React.FC<LoginFormProps> = ({
                       </svg>
                     </div>
                     <div className="ml-3">
-                      <h3 className="text-sm font-medium text-red-800">
+                      <h3 className="text-sm font-medium text-red-800 dark:text-red-200">
                         Login Error
                       </h3>
-                      <div className="mt-2 text-sm text-red-700">
+                      <div className="mt-2 text-sm text-red-700 dark:text-red-300">
                         <p>{error}</p>
                       </div>
                     </div>
@@ -102,7 +110,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
               )}
               
               <div>
-                <label htmlFor="identifier" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="identifier" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                   Username
                 </label>
                 <div className="mt-1">
@@ -114,14 +122,14 @@ export const LoginForm: React.FC<LoginFormProps> = ({
                     required
                     value={identifier}
                     onChange={(e) => setIdentifier(e.target.value)}
-                    className="appearance-none block w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 sm:text-sm transition duration-200"
+                    className="appearance-none block w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm placeholder-gray-400 dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 sm:text-sm transition duration-200"
                     placeholder="Enter your username"
                   />
                 </div>
               </div>
 
               <div>
-                <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="password" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                   Password
                 </label>
                 <div className="mt-1">
@@ -133,7 +141,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="appearance-none block w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 sm:text-sm transition duration-200"
+                    className="appearance-none block w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm placeholder-gray-400 dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 sm:text-sm transition duration-200"
                     placeholder="Enter your password"
                   />
                 </div>
@@ -163,9 +171,9 @@ export const LoginForm: React.FC<LoginFormProps> = ({
               <div className="mt-6">
                 <Link 
                   href="/" 
-                  className="w-full inline-flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition duration-200"
+                  className="w-full inline-flex justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition duration-200"
                 >
-                  <svg className="mr-2 h-5 w-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className="mr-2 h-5 w-5 text-gray-500 dark:text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
                   </svg>
                   Back to Home
@@ -176,8 +184,8 @@ export const LoginForm: React.FC<LoginFormProps> = ({
         </Card>
         
         <div className="mt-6 text-center">
-          <p className="text-xs text-gray-500">
-            &copy; {new Date().getFullYear()} ACME Store. All rights reserved.
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            &copy; {new Date().getFullYear()} AJ Softdrive Store. All rights reserved.
           </p>
         </div>
       </div>

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase, supabaseAuth, supabaseDB } from '@/lib/supabaseClient';
 import { LoginForm } from '@/components/ui/LoginForm';
+import { ThemeToggle } from '@/components/ui/ThemeToggle';
 
 export default function AdminLogin() {
   const [loading, setLoading] = useState(false);

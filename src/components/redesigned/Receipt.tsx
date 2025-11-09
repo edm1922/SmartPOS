@@ -1,6 +1,6 @@
 'use client';
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/Dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/Button";
 
 interface ReceiptItem {
@@ -38,7 +38,7 @@ export function Receipt({ isOpen, onClose, receiptData, onPrint }: ReceiptProps)
         
         <div className="bg-white p-6 rounded-lg max-h-[70vh] overflow-y-auto">
           <div className="text-center mb-6">
-            <h2 className="text-xl font-bold">ACME STORE</h2>
+            <h2 className="text-xl font-bold">AJ SOFTDRIVE STORE</h2>
             <p className="text-gray-600">123 Main Street, City, State 12345</p>
             <p className="text-gray-600">Phone: (555) 123-4567</p>
           </div>

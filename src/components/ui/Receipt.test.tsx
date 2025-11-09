@@ -41,7 +41,7 @@ describe('Receipt', () => {
     render(<Receipt {...mockProps} />);
     
     // Check store header
-    expect(screen.getByText('ACME STORE')).toBeInTheDocument();
+    expect(screen.getByText('AJ SOFTDRIVE STORE')).toBeInTheDocument();
     expect(screen.getByText('123 Main Street, City, State 12345')).toBeInTheDocument();
     expect(screen.getByText('Phone: (555) 123-4567')).toBeInTheDocument();
     

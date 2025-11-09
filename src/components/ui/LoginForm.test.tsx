@@ -27,7 +27,10 @@ jest.mock('./Card', () => {
   );
   
   return {
-    Card: MockCard
+    Card: MockCard,
+    CardContent: ({ children, className }: any) => (
+      <div className={className} data-testid="card-content">{children}</div>
+    )
   };
 });
 

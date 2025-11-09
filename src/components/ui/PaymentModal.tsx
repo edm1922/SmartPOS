@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from './Button';
-import { Card } from './Card';
+import { Card, CardContent } from './Card';
 
 interface PaymentModalProps {
   isOpen: boolean;
@@ -105,7 +105,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
           <div className="px-6 py-5">
             {/* Order summary */}
             <Card className="mb-6">
-              <Card.Content className="p-4">
+              <CardContent className="p-4">
                 <div className="space-y-3">
                   <div className="flex justify-between">
                     <span className="text-gray-600">Subtotal:</span>
@@ -120,7 +120,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                     <span>${total.toFixed(2)}</span>
                   </div>
                 </div>
-              </Card.Content>
+              </CardContent>
             </Card>
 
             {/* Payment method selection */}

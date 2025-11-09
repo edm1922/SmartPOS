@@ -8,8 +8,8 @@ import { ShoppingCart } from '@/components/redesigned/ShoppingCart';
 import { PaymentModal } from '@/components/redesigned/PaymentModal';
 import { Receipt } from '@/components/redesigned/Receipt';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
-import { Skeleton } from '@/components/ui/Skeleton';
+import { Input } from '@/components/ui/input';
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface Product {
   id: string;

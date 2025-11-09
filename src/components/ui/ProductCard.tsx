@@ -66,7 +66,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onAddToCart }
           className="w-full"
           onClick={() => onAddToCart(product)}
           disabled={product.stock_quantity <= 0}
-          variant={product.stock_quantity <= 0 ? 'secondary' : 'primary'}
+          variant={product.stock_quantity <= 0 ? 'secondary' : 'default'}
           size="lg"
         >
           {product.stock_quantity <= 0 ? 'Out of Stock' : 'Add to Cart'}

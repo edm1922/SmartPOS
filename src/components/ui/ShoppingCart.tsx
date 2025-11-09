@@ -1,5 +1,5 @@
 import React from 'react';
-import { Card } from './Card';
+import { Card, CardContent, CardFooter, CardHeader } from './Card';
 import { Button } from './Button';
 
 interface CartItem {
@@ -33,11 +33,11 @@ export const ShoppingCart: React.FC<ShoppingCartProps> = ({
 }) => {
   return (
     <Card className="h-full flex flex-col">
-      <Card.Header className="flex justify-between items-center">
+      <CardHeader className="flex justify-between items-center">
         <h2 className="text-lg font-medium text-gray-900">Shopping Cart</h2>
         {cartItems.length > 0 && (
           <Button 
-            variant="danger" 
+            variant="destructive" 
             size="sm" 
             onClick={onClearCart}
             className="text-xs"
@@ -45,9 +45,9 @@ export const ShoppingCart: React.FC<ShoppingCartProps> = ({
             Clear All
           </Button>
         )}
-      </Card.Header>
+      </CardHeader>
       
-      <Card.Content className="flex-1 overflow-y-auto p-4">
+      <CardContent className="flex-1 overflow-y-auto p-4">
         {cartItems.length === 0 ? (
           <div className="text-center py-8">
             <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -101,7 +101,7 @@ export const ShoppingCart: React.FC<ShoppingCartProps> = ({
                     <span className="text-xs text-gray-500">Stock: {item.stock_quantity}</span>
                     <Button 
                       onClick={() => onRemoveItem(item.id)}
-                      variant="danger"
+                      variant="destructive"
                       size="sm"
                       className="w-8 h-8 p-0 ml-2"
                     >
@@ -115,10 +115,10 @@ export const ShoppingCart: React.FC<ShoppingCartProps> = ({
             ))}
           </div>
         )}
-      </Card.Content>
+      </CardContent>
       
       {cartItems.length > 0 && (
-        <Card.Footer className="p-4 bg-gray-50 rounded-b-xl">
+        <CardFooter className="p-4 bg-gray-50 rounded-b-xl">
           <div className="space-y-2 mb-4">
             <div className="flex justify-between text-sm">
               <span className="text-gray-600">Subtotal:</span>
@@ -149,7 +149,7 @@ export const ShoppingCart: React.FC<ShoppingCartProps> = ({
               Checkout
             </Button>
           </div>
-        </Card.Footer>
+        </CardFooter>
       )}
     </Card>
   );

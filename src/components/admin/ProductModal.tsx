@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/select';
 import { PRODUCT_CATEGORIES } from '@/lib/constants';
 import { lookupProductByBarcode, isValidBarcode } from '@/lib/barcodeLookup';
+import { ImageIcon, Upload, X, Loader2 } from 'lucide-react';
 
 const productSchema = z.object({
     name: z.string().min(1, 'Product name is required'),
@@ -28,6 +29,7 @@ const productSchema = z.object({
     category: z.string().optional(),
     stock_quantity: z.number().min(0, 'Stock quantity must be a positive number'),
     barcode: z.string().optional(),
+    image_url: z.string().optional(),
 });
 
 export type ProductFormData = z.infer<typeof productSchema>;
@@ -40,6 +42,7 @@ interface Product {
     category?: string;
     stock_quantity: number;
     barcode?: string;
+    image_url?: string;
     created_at: string;
 }
 
@@ -66,13 +69,17 @@ export function ProductModal({ isOpen, onClose, product, onSave, setError, user 
             category: '',
             stock_quantity: 0,
             barcode: '',
+            image_url: '',
         },
     });
 
     const { reset } = form;
     const [isLookingUp, setIsLookingUp] = useState(false);
     const [lookupError, setLookupError] = useState<string | null>(null);
+    const [isUploading, setIsUploading] = useState(false);
+    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
     const barcodeInputRef = useRef<HTMLInputElement>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         if (product) {
@@ -83,7 +90,9 @@ export function ProductModal({ isOpen, onClose, product, onSave, setError, user 
                 category: product.category || '',
                 stock_quantity: product.stock_quantity,
                 barcode: product.barcode || '',
+                image_url: product.image_url || '',
             });
+            setPreviewUrl(product.image_url || null);
         } else {
             reset({
                 name: '',
@@ -92,7 +101,9 @@ export function ProductModal({ isOpen, onClose, product, onSave, setError, user 
                 category: '',
                 stock_quantity: 0,
                 barcode: '',
+                image_url: '',
             });
+            setPreviewUrl(null);
         }
     }, [product, reset]);
 
@@ -149,6 +160,57 @@ export function ProductModal({ isOpen, onClose, product, onSave, setError, user 
         }
     };
 
+    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        // Validation
+        if (file.size > 5 * 1024 * 1024) {
+            setError('File size too large. Maximum is 5MB.');
+            return;
+        }
+
+        const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+        if (!allowedTypes.includes(file.type)) {
+            setError('Unsupported file type. Please use JPG, PNG or WebP.');
+            return;
+        }
+
+        // Preview locally
+        const objectUrl = URL.createObjectURL(file);
+        setPreviewUrl(objectUrl);
+
+        setIsUploading(true);
+        try {
+            const { publicUrl, error: uploadError } = await supabaseDB.uploadProductImage(file);
+
+            if (uploadError) {
+                // Determine specific error message
+                let userFriendlyError = uploadError;
+                if (uploadError.includes('bucket_not_found')) {
+                    userFriendlyError = 'Storage bucket "products" not found. Please create it in your Supabase dashboard.';
+                } else if (uploadError.includes('Permission denied') || uploadError.includes('new row violates row-level security')) {
+                    userFriendlyError = 'Permission denied. Please check your Storage RLS policies for the "products" bucket.';
+                }
+                throw new Error(userFriendlyError);
+            }
+
+            form.setValue('image_url', publicUrl || '');
+        } catch (error: any) {
+            console.error('File upload error:', error);
+            setError(error.message || 'Failed to upload image. Please check your Supabase Storage settings.');
+            setPreviewUrl(null); // Clear preview on actual failure to keep form state consistent
+        } finally {
+            setIsUploading(false);
+        }
+    };
+
+    const removeImage = () => {
+        setPreviewUrl(null);
+        form.setValue('image_url', '');
+        if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+
     const onSubmit = async (data: ProductFormData) => {
         try {
             if (product) {
@@ -195,6 +257,52 @@ export function ProductModal({ isOpen, onClose, product, onSave, setError, user 
         >
             <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+                    {/* Image Upload Area */}
+                    <div className="flex flex-col items-center justify-center space-y-4 pt-2">
+                        <Label className="text-sm font-bold uppercase tracking-widest text-muted-foreground mr-auto">Product Image</Label>
+                        <div
+                            className={`relative h-48 w-full rounded-2xl border-2 border-dashed transition-all flex flex-col items-center justify-center overflow-hidden bg-gray-50/50 dark:bg-gray-900/50 ${previewUrl ? 'border-primary' : 'border-gray-200 dark:border-gray-800 hover:border-primary/50 cursor-pointer'}`}
+                            onClick={() => !previewUrl && fileInputRef.current?.click()}
+                        >
+                            {previewUrl ? (
+                                <>
+                                    <img src={previewUrl} alt="Preview" className={`h-full w-full object-contain ${isUploading ? 'opacity-40' : ''}`} />
+                                    {isUploading && (
+                                        <div className="absolute inset-0 flex items-center justify-center">
+                                            <Loader2 className="h-8 w-8 text-primary animate-spin" />
+                                        </div>
+                                    )}
+                                    {!isUploading && (
+                                        <button
+                                            type="button"
+                                            onClick={(e) => { e.stopPropagation(); removeImage(); }}
+                                            className="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-full shadow-lg hover:bg-red-600 transition-colors"
+                                        >
+                                            <X className="h-4 w-4" />
+                                        </button>
+                                    )}
+                                </>
+                            ) : (
+                                <div className="text-center space-y-2 p-4">
+                                    <div className="h-12 w-12 bg-white dark:bg-gray-800 rounded-full flex items-center justify-center mx-auto shadow-sm">
+                                        {isUploading ? <Loader2 className="h-6 w-6 text-primary animate-spin" /> : <Upload className="h-6 w-6 text-gray-400" />}
+                                    </div>
+                                    <div className="space-y-1">
+                                        <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">{isUploading ? 'Uploading...' : 'Click to upload photo'}</p>
+                                        <p className="text-[10px] text-gray-400">PNG, JPG or WebP (max 5MB)</p>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                        <input
+                            type="file"
+                            ref={fileInputRef}
+                            className="hidden"
+                            accept="image/*"
+                            onChange={handleFileChange}
+                        />
+                    </div>
+
                     <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
                         <div className="sm:col-span-2">
                             <div className="space-y-2">

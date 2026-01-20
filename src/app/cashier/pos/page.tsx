@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase, supabaseAuth, supabaseDB } from '@/lib/supabaseClient';
 import { Modal } from '@/components/ui/Modal';
@@ -16,6 +16,27 @@ import {
 import { useCurrency } from '@/context/CurrencyContext';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import { PRODUCT_CATEGORIES } from '@/lib/constants';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Search,
+  Barcode,
+  ShoppingCart,
+  Trash2,
+  Plus,
+  Minus,
+  Settings,
+  LogOut,
+  Box,
+  Filter,
+  CheckCircle2,
+  AlertTriangle,
+  Receipt,
+  CreditCard,
+  Wallet,
+  Monitor
+} from 'lucide-react';
 
 interface Product {
   id: string;
@@ -24,6 +45,7 @@ interface Product {
   barcode?: string;
   category?: string;
   stock_quantity: number;
+  image_url?: string;
   created_at: string;
 }
 
@@ -43,6 +65,7 @@ export default function CashierPOS() {
   const [amountReceived, setAmountReceived] = useState('');
   const [transactionComplete, setTransactionComplete] = useState(false);
   const [receiptData, setReceiptData] = useState<any>(null);
+  const [settings, setSettings] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null); // For success notifications
@@ -57,15 +80,7 @@ export default function CashierPOS() {
       const cashierId = typeof window !== 'undefined' ? sessionStorage.getItem('cashier_id') : null;
       const cashierUsername = typeof window !== 'undefined' ? sessionStorage.getItem('cashier_username') : null;
 
-      console.log('Session check:', {
-        supabaseSession: !!sessionData?.session,
-        cashierSession,
-        cashierId,
-        cashierUsername
-      });
-
       if ((!sessionData?.session && !cashierSession) || !cashierId || !cashierUsername) {
-        console.log('No valid session, redirecting to cashier login');
         if (typeof window !== 'undefined') {
           window.location.href = '/auth/cashier/login';
         }
@@ -74,7 +89,6 @@ export default function CashierPOS() {
 
       // Add cashier info to the user object
       const userWithCashierInfo = {
-        // If we have a real Supabase session, use it, otherwise create a mock user object
         ...(sessionData?.session?.user || { id: 'cashier', email: 'cashier@pos-system.local' }),
         cashier_id: cashierId,
         cashier_username: cashierUsername
@@ -88,8 +102,9 @@ export default function CashierPOS() {
   }, [router]);
 
   useEffect(() => {
-    // Fetch products from Supabase
+    // Fetch products and settings from Supabase
     fetchProducts();
+    fetchSettings();
 
     // Set up real-time listener for product updates
     const channel = supabase
@@ -97,43 +112,25 @@ export default function CashierPOS() {
       .on(
         'postgres_changes',
         {
-          event: 'INSERT',
+          event: '*',
           schema: 'public',
-          table: 'products',
+          table: 'products'
         },
         (payload) => {
-          setProducts((prev) => [...prev, payload.new as Product]);
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'products',
-        },
-        (payload) => {
-          setProducts((prev) =>
-            prev.map((product) =>
-              product.id === payload.new.id ? (payload.new as Product) : product
-            )
-          );
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'DELETE',
-          schema: 'public',
-          table: 'products',
-        },
-        (payload) => {
-          setProducts((prev) => prev.filter((product) => product.id !== payload.old.id));
+          console.log('Product change detected:', payload);
+          if (payload.eventType === 'UPDATE') {
+            setProducts((currentProducts) =>
+              currentProducts.map((p) =>
+                p.id === (payload.new as Product).id ? (payload.new as Product) : p
+              )
+            );
+          } else {
+            fetchProducts();
+          }
         }
       )
       .subscribe();
 
-    // Clean up subscription
     return () => {
       supabase.removeChannel(channel);
     };
@@ -141,10 +138,14 @@ export default function CashierPOS() {
 
   const fetchProducts = async () => {
     try {
-      const { data, error } = await supabaseDB.getProducts();
+      const { data, error } = await supabase
+        .from('products')
+        .select('*')
+        .order('name');
 
       if (error) {
-        throw new Error(error);
+        console.error('Error fetching products:', error);
+        throw error;
       }
 
       setProducts(data || []);
@@ -154,75 +155,59 @@ export default function CashierPOS() {
     }
   };
 
+  const fetchSettings = async () => {
+    try {
+      const { data, error } = await supabaseDB.getSettings();
+      if (error) throw new Error(error);
+      setSettings(data);
+    } catch (error: any) {
+      console.error('Error fetching settings:', error);
+    }
+  };
+
   // Handle keyboard shortcuts
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    // Focus the barcode input when a key is pressed
     if (barcodeInputRef.current && document.activeElement !== barcodeInputRef.current) {
-      // Don't interfere with input fields
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
         return;
       }
-
-      // Focus barcode input on any key press except Escape
       if (e.key !== 'Escape') {
         barcodeInputRef.current.focus();
       }
     }
 
-    // Global keyboard shortcuts
     if (e.ctrlKey || e.metaKey) {
       switch (e.key) {
-        case 'p': // Ctrl/Cmd + P for process payment
+        case 'p':
           e.preventDefault();
-          if (cart.length > 0) {
-            setIsPaymentModalOpen(true);
-          }
+          if (cart.length > 0) setIsPaymentModalOpen(true);
           break;
-        case 'c': // Ctrl/Cmd + C for clear cart
+        case 'c':
           e.preventDefault();
-          if (cart.length > 0) {
-            setCart([]);
-          }
+          if (cart.length > 0) setCart([]);
           break;
-        case 'b': // Ctrl/Cmd + B for focus barcode input
+        case 'b':
           e.preventDefault();
           barcodeInputRef.current?.focus();
           break;
-        case 's': // Ctrl/Cmd + S for sign out
+        case 's':
           e.preventDefault();
           handleSignOut();
           break;
-        case ',': // Ctrl/Cmd + , for settings
+        case ',':
           e.preventDefault();
           setIsSettingsModalOpen(true);
           break;
       }
     }
 
-    // ESC to close modals
     if (e.key === 'Escape') {
-      if (isPaymentModalOpen) {
-        setIsPaymentModalOpen(false);
-      } else if (isReceiptModalOpen) {
-        setIsReceiptModalOpen(false);
-      } else if (isSettingsModalOpen) {
-        setIsSettingsModalOpen(false);
-      }
-    }
-
-    // Enter in barcode input
-    if (e.key === 'Enter' && e.target === barcodeInputRef.current) {
-      const barcode = (e.target as HTMLInputElement).value;
-      const product = products.find(p => p.barcode === barcode);
-
-      if (product) {
-        addToCart(product);
-        (e.target as HTMLInputElement).value = ''; // Clear the input
-      }
+      setIsPaymentModalOpen(false);
+      setIsReceiptModalOpen(false);
+      setIsSettingsModalOpen(false);
     }
   }, [cart, products, isPaymentModalOpen, isReceiptModalOpen, isSettingsModalOpen]);
 
-  // Handle barcode scanning
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
@@ -230,26 +215,20 @@ export default function CashierPOS() {
 
   const handleSignOut = async () => {
     const { error } = await supabaseAuth.signOut();
-
-    // Clean up our custom cashier session
     if (typeof window !== 'undefined') {
       localStorage.removeItem('cashier_session');
       sessionStorage.removeItem('cashier_id');
       sessionStorage.removeItem('cashier_username');
-      // Also remove the cookie
       document.cookie = 'cashier_session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
     }
-
     if (error) {
       setError(error);
       return;
     }
-
     router.push('/');
   };
 
   const addToCart = (product: Product) => {
-    // Check if product is in stock
     if (product.stock_quantity <= 0) {
       setError('Product is out of stock');
       return;
@@ -257,43 +236,27 @@ export default function CashierPOS() {
 
     const existingItem = cart.find(item => item.id === product.id);
     if (existingItem) {
-      // Check if adding another would exceed stock
       if (existingItem.quantity >= product.stock_quantity) {
         setError('Not enough stock available');
         return;
       }
-
       setCart(cart.map(item =>
-        item.id === product.id
-          ? { ...item, quantity: item.quantity + 1 }
-          : item
+        item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
       ));
-
-      // Show success feedback
       setSuccessMessage(`Added another ${product.name} to cart`);
     } else {
       setCart([...cart, { ...product, quantity: 1 }]);
-
-      // Show success feedback
       setSuccessMessage(`Added ${product.name} to cart`);
     }
-
-    // Clear success message after 2 seconds
-    setTimeout(() => {
-      setSuccessMessage(null);
-    }, 2000);
+    setTimeout(() => setSuccessMessage(null), 2000);
   };
 
   const removeFromCart = (productId: string) => {
     const product = cart.find(item => item.id === productId);
     setCart(cart.filter(item => item.id !== productId));
-
-    // Show success feedback
     if (product) {
       setSuccessMessage(`Removed ${product.name} from cart`);
-      setTimeout(() => {
-        setSuccessMessage(null);
-      }, 2000);
+      setTimeout(() => setSuccessMessage(null), 2000);
     }
   };
 
@@ -302,30 +265,14 @@ export default function CashierPOS() {
       removeFromCart(productId);
       return;
     }
-
-    // Find the product to check stock
     const product = products.find(p => p.id === productId);
     if (product && quantity > product.stock_quantity) {
       setError('Not enough stock available');
       return;
     }
-
-    // Find the current item in cart
-    const currentItem = cart.find(item => item.id === productId);
-
     setCart(cart.map(item =>
-      item.id === productId
-        ? { ...item, quantity }
-        : item
+      item.id === productId ? { ...item, quantity } : item
     ));
-
-    // Show success feedback for significant changes
-    if (product && currentItem && Math.abs(quantity - currentItem.quantity) >= 1) {
-      setSuccessMessage(`Updated ${product.name} quantity to ${quantity}`);
-      setTimeout(() => {
-        setSuccessMessage(null);
-      }, 2000);
-    }
   };
 
   const calculateTotal = () => {
@@ -333,7 +280,7 @@ export default function CashierPOS() {
   };
 
   const calculateChange = () => {
-    const total = calculateTotal();
+    const total = calculateTotal() * (1 + (settings?.tax_rate || 0) / 100);
     const received = parseFloat(amountReceived) || 0;
     return Math.max(0, received - total);
   };
@@ -344,48 +291,22 @@ export default function CashierPOS() {
     }
   };
 
-  const handleClearCart = () => {
-    setCart([]);
-    setSuccessMessage('Cart cleared');
-    setTimeout(() => {
-      setSuccessMessage(null);
-    }, 2000);
-  };
-
   const completeTransaction = async () => {
     try {
-      // Show loading state
       setError(null);
       setSuccessMessage('Processing transaction...');
 
-      // Get the real cashier ID from sessionStorage
       const cashierId = typeof window !== 'undefined' ? sessionStorage.getItem('cashier_id') : null;
+      if (!cashierId) throw new Error('Cashier information not found.');
 
-      if (!cashierId) {
-        throw new Error('Cashier information not found. Please log in again.');
-      }
-
-      console.log('Creating transaction for cashier ID:', cashierId);
-
-      // Validate that the cashier exists and is active
       const { data: cashierData, error: cashierError } = await supabase
         .from('cashiers')
         .select('id, username, is_active')
         .eq('id', cashierId)
         .single();
 
-      if (cashierError) {
-        console.error('Error validating cashier:', cashierError);
-        throw new Error(`Failed to validate cashier: ${cashierError.message || 'Unknown error'}`);
-      }
+      if (cashierError || !cashierData?.is_active) throw new Error('Cashier account error.');
 
-      if (!cashierData || !cashierData.is_active) {
-        throw new Error('Cashier account is not active. Please contact administrator.');
-      }
-
-      console.log('Cashier validated:', cashierData);
-
-      // Save transaction to database
       const transactionPayload = {
         cashier_id: cashierId,
         total_amount: calculateTotal(),
@@ -393,40 +314,14 @@ export default function CashierPOS() {
         status: 'completed'
       };
 
-      console.log('Transaction payload:', transactionPayload);
-
-      // Add a small delay to ensure the cashier validation is complete
-      await new Promise(resolve => setTimeout(resolve, 100));
-
-      // Enhanced error handling with detailed logging
       const { data: transactionData, error: transactionError } = await supabase
         .from('transactions')
         .insert(transactionPayload)
         .select()
         .single();
 
-      if (transactionError) {
-        console.error('Error creating transaction:', transactionError);
-        console.error('Transaction payload that failed:', transactionPayload);
-        console.error('Supabase client config:', {
-          url: process.env.NEXT_PUBLIC_SUPABASE_URL,
-          hasAnonKey: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-        });
+      if (transactionError) throw transactionError;
 
-        // Provide more specific error information
-        const errorMessage = transactionError.message || 'Unknown database error';
-        // Add more context to the error message
-        if (errorMessage.includes('row-level security')) {
-          throw new Error('Access denied: You do not have permission to create transactions. Please contact your administrator. (RLS Policy Violation)');
-        } else if (errorMessage.includes('401')) {
-          throw new Error('Authentication failed: The system is not properly configured to allow transaction creation. Please contact your administrator. (401 Unauthorized)');
-        }
-        throw new Error(`Failed to create transaction: ${errorMessage}`);
-      }
-
-      console.log('Transaction created:', transactionData);
-
-      // Save transaction items
       const transactionItems = cart.map(item => ({
         transaction_id: transactionData.id,
         product_id: item.id,
@@ -434,615 +329,296 @@ export default function CashierPOS() {
         price: item.price
       }));
 
-      console.log('Transaction items to insert:', transactionItems);
+      const { error: itemsError } = await supabase.from('transaction_items').insert(transactionItems);
+      if (itemsError) throw itemsError;
 
-      const { error: itemsError } = await supabase
-        .from('transaction_items')
-        .insert(transactionItems);
-
-      if (itemsError) {
-        console.error('Error creating transaction items:', itemsError);
-        // Provide more specific error information
-        const errorMessage = itemsError.message || 'Unknown database error';
-        throw new Error(`Failed to save transaction items: ${errorMessage}`);
-      }
-
-      console.log('Transaction items saved successfully');
-
-      // Update inventory in Supabase
-      let inventoryUpdateErrors = 0;
       for (const item of cart) {
-        const product = products.find(p => p.id === item.id);
-        if (product) {
-          const newStock = product.stock_quantity - item.quantity;
-          console.log(`Updating stock for product ${product.id}: ${product.stock_quantity} -> ${newStock}`);
-
-          const { error } = await supabaseDB.updateProductStock(item.id, newStock);
-
-          if (error) {
-            console.error('Error updating inventory for product:', item.id, error);
-            inventoryUpdateErrors++;
-          }
-        }
+        const { error: stockError } = await supabase
+          .from('products')
+          .update({ stock_quantity: item.stock_quantity - item.quantity })
+          .eq('id', item.id);
+        if (stockError) console.error('Error updating stock:', stockError);
       }
 
-      if (inventoryUpdateErrors > 0) {
-        console.warn(`Failed to update inventory for ${inventoryUpdateErrors} products`);
-        // Don't throw an error here as the transaction was successful
-        setSuccessMessage(`Transaction completed with ${inventoryUpdateErrors} inventory update issues. Please check product stock manually.`);
-      } else {
-        setSuccessMessage('Transaction completed successfully!');
-      }
-
-      // Prepare receipt data
-      const receiptData = {
+      setReceiptData({
         id: transactionData.id,
-        date: new Date(transactionData.created_at).toLocaleString(),
-        items: cart,
+        date: new Date().toISOString(),
+        items: [...cart],
         total: calculateTotal(),
         paymentMethod,
-        amountReceived: paymentMethod === 'cash' ? parseFloat(amountReceived) || 0 : calculateTotal(),
-        change: paymentMethod === 'cash' ? calculateChange() : 0,
-      };
+        amountReceived: parseFloat(amountReceived) || calculateTotal(),
+        change: calculateChange()
+      });
 
-      console.log('Transaction completed:', receiptData);
-
-      // Set receipt data
-      setReceiptData(receiptData);
-
-      // Reset cart and close modal
       setCart([]);
-      setIsPaymentModalOpen(false);
-      setTransactionComplete(true);
       setAmountReceived('');
-
-      // Show receipt modal
+      setIsPaymentModalOpen(false);
       setIsReceiptModalOpen(true);
-
-      // Show success message for 3 seconds
-      setTimeout(() => {
-        setTransactionComplete(false);
-        setSuccessMessage(null);
-      }, 3000);
+      setTransactionComplete(true);
+      setSuccessMessage('Transaction successful!');
+      setTimeout(() => setTransactionComplete(false), 5000);
+      fetchProducts();
     } catch (error: any) {
-      console.error('Error completing transaction:', error);
-      // Provide more detailed error messages
-      const errorMessage = error.message || 'Error completing transaction. Please try again.';
-      setError(errorMessage);
-      setSuccessMessage(null);
-
-      // If it's a 401 error, suggest checking the database configuration
-      if (errorMessage.includes('401') || errorMessage.includes('Authentication failed')) {
-        setError(`${errorMessage} - Please ensure the database security policies have been applied. See APPLY_DATABASE_FIXES.md for instructions.`);
-      }
+      console.error('Transaction error:', error);
+      setError(error.message || 'Transaction failed.');
     }
   };
 
   const printReceipt = () => {
-    // In a real app, you would implement actual receipt printing
-    // For now, we'll just show an alert
-    alert('Receipt would be printed in a real application');
+    window.print();
   };
 
-  const filteredProducts = products.filter(product => {
-    const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (product.barcode && product.barcode.includes(searchTerm));
-    const matchesCategory = !selectedCategory || product.category === selectedCategory;
-    return matchesSearch && matchesCategory;
-  });
+  const filteredProducts = useMemo(() => {
+    return products.filter(product => {
+      const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (product.barcode && product.barcode.includes(searchTerm));
+      const matchesCategory = !selectedCategory || product.category === selectedCategory;
+      return matchesSearch && matchesCategory;
+    });
+  }, [products, searchTerm, selectedCategory]);
 
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600 dark:text-gray-400">Loading POS terminal...</p>
+        <div className="text-center space-y-4">
+          <div className="relative h-20 w-20 mx-auto">
+            <div className="absolute inset-0 rounded-full border-4 border-primary/20"></div>
+            <div className="absolute inset-0 rounded-full border-4 border-primary border-t-transparent animate-spin"></div>
+            <ShoppingCart className="absolute inset-0 m-auto h-8 w-8 text-primary animate-pulse" />
+          </div>
+          <p className="text-sm font-bold text-gray-500 uppercase tracking-widest">Initializing Terminal...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col">
-      <style jsx global>{`
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(-10px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        .animate-fade-in {
-          animation: fadeIn 0.3s ease-out;
-        }
-        
-        @keyframes pulse {
-          0% { transform: scale(1); }
-          50% { transform: scale(1.05); }
-          100% { transform: scale(1); }
-        }
-        .animate-pulse-once {
-          animation: pulse 0.3s ease-in-out;
-        }
-      `}</style>
-      {/* Error Notification */}
-      {error && (
-        <div className="fixed top-4 right-4 z-50">
-          <Card className="bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-800">
-            <CardContent>
-              <div className="flex items-center">
-                <svg className="h-5 w-5 text-red-400 dark:text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <div className="ml-3">
-                  <p className="text-sm font-medium text-red-800 dark:text-red-200">{error}</p>
-                </div>
-                <button
-                  className="ml-4 text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
-                  onClick={() => setError(null)}
-                >
-                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      {/* Success Notification */}
-      {successMessage && (
-        <div className="fixed top-4 left-4 z-50 animate-fade-in">
-          <Card className="bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-800">
-            <CardContent>
-              <div className="flex items-center">
-                <svg className="h-5 w-5 text-green-400 dark:text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-                <div className="ml-3">
-                  <p className="text-sm font-medium text-green-800 dark:text-green-200">{successMessage}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      {/* Top Navigation */}
-      <nav className="bg-white dark:bg-gray-800 shadow">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
-            <div className="flex">
-              <div className="flex-shrink-0 flex items-center">
-                <div className="bg-primary-600 w-8 h-8 rounded-full"></div>
-                <span className="ml-2 text-xl font-bold text-gray-900 dark:text-white">POS Terminal</span>
-              </div>
+    <div className="h-screen bg-gray-50 dark:bg-gray-950 flex flex-col overflow-hidden">
+      <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[100] flex flex-col gap-2 w-full max-w-sm px-4">
+        {error && (
+          <div className="bg-red-600 text-white px-4 py-3 rounded-xl shadow-2xl flex items-center justify-between animate-in slide-in-from-top duration-300">
+            <div className="flex items-center gap-3">
+              <AlertTriangle className="h-5 w-5" />
+              <p className="text-sm font-bold">{error}</p>
             </div>
-            <div className="hidden sm:ml-6 sm:flex sm:items-center space-x-2">
-              <ThemeToggle />
-              <Button
-                onClick={() => setIsSettingsModalOpen(true)}
-                variant="outline"
-                size="sm"
-                className="mr-2 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
-              >
-                Settings (Ctrl+,)
-              </Button>
-              <Button
-                onClick={handleSignOut}
-                variant="outline"
-                size="sm"
-                className="mr-2 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
-              >
-                Sign out (Ctrl+S)
-              </Button>
-            </div>
+            <button onClick={() => setError(null)} className="opacity-70 hover:opacity-100"><Trash2 className="h-4 w-4" /></button>
+          </div>
+        )}
+        {successMessage && (
+          <div className="bg-primary text-white px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 animate-in slide-in-from-top duration-300">
+            <CheckCircle2 className="h-5 w-5" />
+            <p className="text-sm font-bold">{successMessage}</p>
+          </div>
+        )}
+      </div>
+
+      <header className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 h-16 flex items-center justify-between px-6 shrink-0 relative z-10">
+        <div className="flex items-center gap-4">
+          <div className="h-10 w-10 bg-primary rounded-xl flex items-center justify-center text-white shadow-lg shadow-primary/20">
+            <Monitor className="h-6 w-6" />
+          </div>
+          <div>
+            <h1 className="text-lg font-black tracking-tight dark:text-white uppercase leading-none">SmartPOS <span className="text-primary text-[10px] bg-primary/10 px-1.5 py-0.5 rounded-md ml-1">Terminal</span></h1>
+            <p className="text-[10px] text-muted-foreground font-bold mt-1 uppercase flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+              Operator: {user?.cashier_username || 'Staff'}
+            </p>
           </div>
         </div>
-      </nav>
 
-      {/* Main Content */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Products Section */}
-        <div className="flex-1 overflow-y-auto p-6">
-          <div className="mb-6">
-            <div className="relative rounded-md shadow-sm mb-4">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <svg className="h-5 w-5 text-gray-400 dark:text-gray-500" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
-                </svg>
-              </div>
-              <input
-                type="text"
-                className="focus:ring-primary-500 focus:border-primary-500 block w-full pl-10 pr-12 sm:text-sm border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                placeholder="Search products by name or barcode..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
+        <div className="flex items-center gap-2">
+          <ThemeToggle />
+          <div className="h-8 w-px bg-gray-200 dark:bg-gray-800 mx-2" />
+          <Button onClick={() => setIsSettingsModalOpen(true)} variant="ghost" size="sm" className="font-bold text-xs"><Settings className="h-4 w-4" /></Button>
+          <Button onClick={handleSignOut} variant="destructive" size="sm" className="font-bold text-xs flex items-center gap-2"><LogOut className="h-4 w-4" /> LOCK</Button>
+        </div>
+      </header>
 
-            {/* Barcode Scanner Input */}
-            <div className="relative rounded-md shadow-sm">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <svg className="h-5 w-5 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
-                </svg>
+      <main className="flex-1 flex overflow-hidden">
+        <section className="flex-1 flex flex-col bg-gray-50 dark:bg-gray-950">
+          <div className="p-4 border-b border-gray-200 dark:border-gray-800 bg-white/50 dark:bg-gray-900/50 backdrop-blur-sm space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="relative group">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input placeholder="Search item..." className="pl-10 h-11 bg-white dark:bg-gray-800 rounded-xl" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
               </div>
-              <input
-                ref={barcodeInputRef}
-                type="text"
-                className="focus:ring-primary-500 focus:border-primary-500 block w-full pl-10 pr-12 sm:text-sm border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                placeholder="Scan barcode... (Ctrl+B to focus)"
-              />
-              <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-                <span className="text-xs text-gray-500 dark:text-gray-400">Enter↵</span>
+              <div className="relative group">
+                <Barcode className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input ref={barcodeInputRef} placeholder="Scan barcode..." className="pl-10 h-11 bg-white dark:bg-gray-800 rounded-xl" />
               </div>
             </div>
-
-            {/* Category Filter */}
-            <div className="flex flex-wrap gap-2 mt-4">
-              <Button
-                variant={selectedCategory === null ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setSelectedCategory(null)}
-                className="rounded-full"
-              >
-                All
-              </Button>
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
+              <Button variant={selectedCategory === null ? 'default' : 'outline'} size="sm" onClick={() => setSelectedCategory(null)} className="rounded-full text-[10px] uppercase h-8">All Items</Button>
               {PRODUCT_CATEGORIES.map((category) => (
-                <Button
-                  key={category}
-                  variant={selectedCategory === category ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setSelectedCategory(category)}
-                  className="rounded-full"
-                >
-                  {category}
-                </Button>
+                <Button key={category} variant={selectedCategory === category ? 'default' : 'outline'} size="sm" onClick={() => setSelectedCategory(category)} className="rounded-full text-[10px] uppercase h-8">{category}</Button>
               ))}
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {filteredProducts.map((product) => (
-              <div
-                key={product.id}
-                className="cursor-pointer"
-                onClick={() => addToCart(product)}
-              >
-                <Card className="hover:shadow-lg transition-all duration-200 bg-white dark:bg-gray-800">
-                  <CardContent className="p-4">
-                    <div className="flex justify-between items-start">
+          <div className="flex-1 overflow-y-auto p-6 scrollbar-thin">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+              {filteredProducts.map((product) => (
+                <div key={product.id} className="group relative" onClick={() => addToCart(product)}>
+                  <Card className={`h-full flex flex-col cursor-pointer transition-all border-gray-200 dark:border-gray-800 overflow-hidden ${product.stock_quantity <= 0 ? 'opacity-60 grayscale' : ''}`}>
+                    <div className="aspect-square bg-gray-100 dark:bg-gray-800 flex items-center justify-center relative overflow-hidden">
+                      {product.image_url ? (
+                        <img src={product.image_url} alt={product.name} className="h-full w-full object-cover transition-transform group-hover:scale-110 duration-500" />
+                      ) : (
+                        <Box className="h-12 w-12 text-gray-300 dark:text-gray-700" />
+                      )}
+                      <div className="absolute top-2 right-2"><Badge variant="secondary">{formatPrice(product.price)}</Badge></div>
+                    </div>
+                    <CardContent className="p-3 flex-1 flex flex-col justify-between">
                       <div>
-                        <h3 className="text-lg font-medium text-gray-900 dark:text-white">{product.name}</h3>
-                        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Barcode: {product.barcode || 'N/A'}</p>
-                        <p className="mt-1 text-sm">
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${product.stock_quantity > 10
-                            ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-                            : product.stock_quantity > 0
-                              ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
-                              : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
-                            }`}>
-                            Stock: {product.stock_quantity}
-                          </span>
-                        </p>
+                        <h3 className="text-sm font-bold dark:text-white line-clamp-2">{product.name}</h3>
+                        <p className="text-[10px] text-muted-foreground font-mono">{product.barcode || 'NO BARCODE'}</p>
                       </div>
-                      <p className="text-lg font-bold text-primary-600 dark:text-primary-400">{formatPrice(product.price)}</p>
-                    </div>
-                    <Button
-                      className={`mt-4 w-full ${successMessage && successMessage.includes(product.name) ? 'animate-pulse-once' : ''}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        addToCart(product);
-                      }}
-                      disabled={product.stock_quantity <= 0}
-                      variant={product.stock_quantity <= 0 ? 'secondary' : 'default'}
-                    >
-                      {product.stock_quantity <= 0 ? 'Out of Stock' : 'Add to Cart'}
-                    </Button>
-                  </CardContent>
-                </Card>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Cart Section */}
-        <div className="w-full lg:w-96">
-          <Card className="bg-white dark:bg-gray-800">
-            <CardHeader>
-              <CardTitle className="text-lg font-medium text-gray-900 dark:text-white">Shopping Cart</CardTitle>
-            </CardHeader>
-
-            <CardContent className="p-4">
-              {cart.length === 0 ? (
-                <div className="text-center py-8">
-                  <svg className="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
-                  </svg>
-                  <h3 className="mt-2 text-sm font-medium text-gray-900 dark:text-white">No items</h3>
-                  <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Add products to the cart</p>
+                      <div className="flex items-center justify-between mt-2">
+                        <span className={`text-[9px] font-black uppercase ${product.stock_quantity > 10 ? 'text-green-500' : 'text-orange-500'}`}>Stock: {product.stock_quantity}</span>
+                        <div className="h-6 w-6 rounded-full bg-primary text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><Plus className="h-3 w-3" /></div>
+                      </div>
+                    </CardContent>
+                  </Card>
                 </div>
-              ) : (
-                <div className="space-y-4">
-                  {cart.map((item) => (
-                    <div key={item.id} className="flex items-center border-b border-gray-100 dark:border-gray-700 pb-4 last:border-0 last:pb-0">
-                      <div className="flex-1">
-                        <h3 className="text-sm font-medium text-gray-900 dark:text-white">{item.name}</h3>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">{formatPrice(item.price)} each</p>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">Stock: {item.stock_quantity}</p>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Button
-                          onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                          variant="secondary"
-                          size="sm"
-                          className="w-8 h-8 p-0"
-                        >
-                          -
-                        </Button>
-                        <span className="w-8 text-center text-sm font-medium text-gray-900 dark:text-white">{item.quantity}</span>
-                        <Button
-                          onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                          variant="secondary"
-                          size="sm"
-                          className="w-8 h-8 p-0"
-                          disabled={item.quantity >= item.stock_quantity}
-                        >
-                          +
-                        </Button>
-                        <Button
-                          onClick={() => removeFromCart(item.id)}
-                          variant="destructive"
-                          size="sm"
-                          className="ml-2 w-8 h-8 p-0"
-                        >
-                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
+              ))}
+            </div>
+          </div>
+        </section>
 
-            <CardFooter className="p-4 bg-white dark:bg-gray-800">
-              <div className={`flex justify-between text-lg font-bold mb-4 ${successMessage ? 'animate-pulse-once' : ''}`}>
-                <span className="text-gray-900 dark:text-white">Total:</span>
-                <span className="text-gray-900 dark:text-white">{formatPrice(calculateTotal())}</span>
+        <aside className="w-[400px] bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-800 flex flex-col shadow-2xl relative z-10">
+          <div className="p-6 border-b border-gray-200 dark:border-gray-800 shrink-0">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-black uppercase dark:text-white flex items-center gap-2"><ShoppingCart className="h-5 w-5 text-primary" /> Checkout</h2>
+              <Badge variant="outline">{cart.length} Items</Badge>
+            </div>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4 space-y-3">
+            {cart.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center opacity-20">
+                <ShoppingCart className="h-16 w-16 mb-4" />
+                <p className="text-sm font-bold uppercase tracking-widest">Cart is Empty</p>
               </div>
-              <Button
-                className="w-full"
-                disabled={cart.length === 0}
-                onClick={handleProcessPayment}
-                size="lg"
-              >
-                Process Payment (Ctrl+P)
-              </Button>
-            </CardFooter>
-          </Card>
-        </div>
-      </div>
-
-      {/* Payment Modal */}
-      <Modal
-        isOpen={isPaymentModalOpen}
-        onClose={() => setIsPaymentModalOpen(false)}
-        title="Process Payment"
-        size="md"
-      >
-        <div className="space-y-6">
-          <div className="bg-gray-50 p-4 rounded-lg">
-            <div className="flex justify-between mb-2">
-              <span className="text-gray-600">Subtotal:</span>
-              <span className="font-medium">{formatPrice(calculateTotal())}</span>
+            ) : (
+              cart.map((item) => (
+                <div key={item.id} className="bg-gray-50 dark:bg-gray-800/50 p-3 rounded-2xl border border-transparent hover:border-primary/20 transition-all">
+                  <div className="flex justify-between items-start mb-2">
+                    <div className="flex-1">
+                      <h4 className="text-sm font-bold dark:text-white leading-tight">{item.name}</h4>
+                      <p className="text-xs text-primary font-bold">{formatPrice(item.price)}</p>
+                    </div>
+                    <button onClick={() => removeFromCart(item.id)} className="text-gray-400 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
+                  </div>
+                  <div className="flex items-center justify-between bg-white dark:bg-gray-900 rounded-xl p-1 shadow-sm">
+                    <div className="flex items-center gap-1">
+                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => updateQuantity(item.id, item.quantity - 1)}><Minus className="h-3 w-3" /></Button>
+                      <span className="w-8 text-center text-xs font-black">{item.quantity}</span>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 text-primary" onClick={() => updateQuantity(item.id, item.quantity + 1)} disabled={item.quantity >= item.stock_quantity}><Plus className="h-3 w-3" /></Button>
+                    </div>
+                    <span className="text-sm font-black pr-2">{formatPrice(item.price * item.quantity)}</span>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+          <div className="p-6 bg-gray-50 dark:bg-gray-950 border-t border-gray-200 dark:border-gray-800 shrink-0 space-y-4">
+            <div className="space-y-1">
+              <div className="flex justify-between text-xs font-bold text-muted-foreground uppercase"><span>Subtotal</span><span>{formatPrice(calculateTotal())}</span></div>
+              <div className="flex justify-between text-xs font-bold text-muted-foreground uppercase"><span>Tax</span><span>{formatPrice(calculateTotal() * (settings?.tax_rate || 0) / 100)}</span></div>
+              <div className="pt-2 border-t border-gray-200 dark:border-gray-800 flex justify-between items-center text-2xl font-black dark:text-white">
+                <span className="text-sm uppercase">Total</span>
+                <span className="text-primary">{formatPrice(calculateTotal() * (1 + (settings?.tax_rate || 0) / 100))}</span>
+              </div>
             </div>
-            <div className="flex justify-between mb-2">
-              <span className="text-gray-600">Tax:</span>
-              <span className="font-medium">{formatPrice(0)}</span>
-            </div>
-            <div className="flex justify-between border-t border-gray-200 pt-2 mt-2">
-              <span className="text-lg font-bold">Total:</span>
-              <span className="text-lg font-bold">{formatPrice(calculateTotal())}</span>
+            <div className="grid grid-cols-2 gap-3">
+              <Button variant="outline" className="h-14 rounded-2xl font-bold uppercase text-xs" onClick={() => setCart([])} disabled={cart.length === 0}>Clear</Button>
+              <Button className="h-14 rounded-2xl font-black uppercase text-xs shadow-xl" onClick={handleProcessPayment} disabled={cart.length === 0}>Pay Now</Button>
             </div>
           </div>
+        </aside>
+      </main>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Payment Method</label>
-            <div className="grid grid-cols-3 gap-2">
-              <button
-                type="button"
-                className={`py-2 px-4 border rounded-md text-sm font-medium ${paymentMethod === 'cash'
-                  ? 'bg-primary-100 border-primary-500 text-primary-700'
-                  : 'border-gray-300 text-gray-700 hover:bg-gray-50'
-                  }`}
-                onClick={() => setPaymentMethod('cash')}
-              >
-                Cash
-              </button>
-              <button
-                type="button"
-                className={`py-2 px-4 border rounded-md text-sm font-medium ${paymentMethod === 'card'
-                  ? 'bg-primary-100 border-primary-500 text-primary-700'
-                  : 'border-gray-300 text-gray-700 hover:bg-gray-50'
-                  }`}
-                onClick={() => setPaymentMethod('card')}
-              >
-                Card
-              </button>
-              <button
-                type="button"
-                className={`py-2 px-4 border rounded-md text-sm font-medium ${paymentMethod === 'mobile'
-                  ? 'bg-primary-100 border-primary-500 text-primary-700'
-                  : 'border-gray-300 text-gray-700 hover:bg-gray-50'
-                  }`}
-                onClick={() => setPaymentMethod('mobile')}
-              >
-                Mobile
-              </button>
-            </div>
+      <Modal isOpen={isPaymentModalOpen} onClose={() => setIsPaymentModalOpen(false)} title="Processing Order" size="md">
+        <div className="space-y-8 p-2">
+          <div className="text-center">
+            <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-1">Total Due</p>
+            <h2 className="text-5xl font-black text-primary">{formatPrice(calculateTotal() * (1 + (settings?.tax_rate || 0) / 100))}</h2>
           </div>
-
+          <div className="grid grid-cols-3 gap-4">
+            <PaymentTab active={paymentMethod === 'cash'} onClick={() => setPaymentMethod('cash')} icon={<Wallet className="h-5 w-5" />} label="Cash" />
+            <PaymentTab active={paymentMethod === 'card'} onClick={() => setPaymentMethod('card')} icon={<CreditCard className="h-5 w-5" />} label="Card" />
+            <PaymentTab active={paymentMethod === 'mobile'} onClick={() => setPaymentMethod('mobile')} icon={<Monitor className="h-5 w-5" />} label="Mobile" />
+          </div>
           {paymentMethod === 'cash' && (
-            <div>
-              <label htmlFor="amountReceived" className="block text-sm font-medium text-gray-700 mb-2">
-                Amount Received
-              </label>
-              <div className="relative rounded-md shadow-sm">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <span className="text-gray-500 sm:text-sm">$</span>
-                </div>
-                <input
-                  type="number"
-                  id="amountReceived"
-                  className="focus:ring-primary-500 focus:border-primary-500 block w-full pl-7 pr-12 sm:text-sm border-gray-300 rounded-md"
-                  placeholder="0.00"
-                  value={amountReceived}
-                  onChange={(e) => setAmountReceived(e.target.value)}
-                  step="0.01"
-                />
+            <div className="bg-gray-50 dark:bg-gray-900 p-6 rounded-3xl border border-gray-200 dark:border-gray-800">
+              <label className="block text-xs font-black uppercase text-muted-foreground mb-3 text-center">Amount Tendered</label>
+              <div className="relative">
+                <Input type="number" className="h-20 text-center text-4xl font-black bg-white dark:bg-gray-950 rounded-2xl" placeholder="0.00" value={amountReceived} onChange={(e) => setAmountReceived(e.target.value)} autoFocus />
+                <div className="absolute left-6 top-1/2 -translate-y-1/2 text-2xl font-black text-gray-300">₱</div>
               </div>
-              {amountReceived && (
-                <div className="mt-2 text-sm text-gray-500">
-                  Change: {formatPrice(calculateChange())}
+              {parseFloat(amountReceived) >= (calculateTotal() * (1 + (settings?.tax_rate || 0) / 100)) && (
+                <div className="mt-6 text-center animate-in zoom-in duration-300">
+                  <p className="text-xs font-black text-green-600 uppercase mb-1">Change Due</p>
+                  <h3 className="text-4xl font-black text-green-700">{formatPrice(calculateChange())}</h3>
                 </div>
               )}
             </div>
           )}
-
-          <div className="flex justify-end space-x-3">
-            <Button variant="secondary" onClick={() => setIsPaymentModalOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={completeTransaction}>
-              Complete Transaction
-            </Button>
+          <div className="flex gap-4">
+            <Button variant="ghost" className="flex-1 h-14 rounded-2xl font-bold uppercase" onClick={() => setIsPaymentModalOpen(false)}>Back</Button>
+            <Button className="flex-[2] h-14 rounded-2xl font-black uppercase" onClick={completeTransaction}>Finalize</Button>
           </div>
         </div>
       </Modal>
 
-      {/* Receipt Modal */}
-      <Modal
-        isOpen={isReceiptModalOpen}
-        onClose={() => setIsReceiptModalOpen(false)}
-        title="Receipt"
-        size="md"
-      >
+      <Modal isOpen={isReceiptModalOpen} onClose={() => setIsReceiptModalOpen(false)} title="Finalized" size="md">
         {receiptData && (
-          <div className="bg-white p-6 rounded-lg">
-            <div className="text-center mb-6">
-              <h2 className="text-xl font-bold">AJ SOFTDRIVE STORE</h2>
-              <p className="text-gray-600">123 Main Street, City, State 12345</p>
-              <p className="text-gray-600">Phone: (555) 123-4567</p>
+          <div className="bg-white p-8 rounded-3xl text-gray-900 shadow-inner">
+            <div className="text-center mb-8">
+              <div className="h-12 w-12 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4 text-primary"><Receipt className="h-6 w-6" /></div>
+              <h2 className="text-2xl font-black uppercase">{settings?.store_name || 'SMART POS'}</h2>
             </div>
-
-            <div className="border-t border-b border-gray-200 py-4 mb-4">
-              <div className="flex justify-between mb-2">
-                <span className="text-gray-600">Transaction ID:</span>
-                <span>{receiptData.id}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Date:</span>
-                <span>{receiptData.date}</span>
-              </div>
+            <div className="grid grid-cols-2 gap-4 border-y border-dashed border-gray-200 py-6 mb-8 text-xs">
+              <div><p className="font-black text-gray-400 uppercase">Order Ref</p><p className="font-mono font-bold">{receiptData.id.substring(0, 8).toUpperCase()}</p></div>
+              <div className="text-right"><p className="font-black text-gray-400 uppercase">Method</p><Badge className="text-[8px] font-black uppercase h-4 px-1.5">{receiptData.paymentMethod}</Badge></div>
             </div>
-
-            <div className="mb-4">
-              <h3 className="font-medium mb-2">Items:</h3>
+            <div className="space-y-4 mb-8">
+              <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest border-b border-gray-50 pb-2">Line Items</h3>
               <div className="space-y-2">
-                {receiptData.items.map((item: any, index: number) => (
-                  <div key={index} className="flex justify-between text-sm">
-                    <div>
-                      <span className="font-medium">{item.name}</span>
-                      <span className="text-gray-600"> x{item.quantity}</span>
-                    </div>
-                    <span>{formatPrice(item.price * item.quantity)}</span>
+                {receiptData.items.map((item: any, idx: number) => (
+                  <div key={idx} className="flex justify-between items-start text-sm">
+                    <div className="flex-1"><p className="font-bold text-gray-800">{item.name}</p><p className="text-[10px] text-gray-500 font-bold">{item.quantity} x {formatPrice(item.price)}</p></div>
+                    <p className="font-black text-gray-900">{formatPrice(item.price * item.quantity)}</p>
                   </div>
                 ))}
               </div>
             </div>
-
-            <div className="border-t border-gray-200 pt-4 mb-6">
-              <div className="flex justify-between mb-2">
-                <span className="text-gray-600">Subtotal:</span>
-                <span>{formatPrice(receiptData.total)}</span>
+            <div className="bg-gray-50 p-6 rounded-2xl mb-8 space-y-2">
+              <div className="flex justify-between items-center text-xl font-black text-gray-900">
+                <span className="text-[10px] uppercase">Grand Total</span>
+                <span className="text-2xl">{formatPrice(receiptData.total * (1 + (settings?.tax_rate || 0) / 100))}</span>
               </div>
-              <div className="flex justify-between mb-2">
-                <span className="text-gray-600">Tax:</span>
-                <span>{formatPrice(0)}</span>
-              </div>
-              <div className="flex justify-between font-bold text-lg mb-2">
-                <span>Total:</span>
-                <span>{formatPrice(receiptData.total)}</span>
-              </div>
-              <div className="flex justify-between mb-2">
-                <span className="text-gray-600">Payment Method:</span>
-                <span className="capitalize">{receiptData.paymentMethod}</span>
-              </div>
-              {receiptData.paymentMethod === 'cash' && (
-                <>
-                  <div className="flex justify-between mb-2">
-                    <span className="text-gray-600">Amount Received:</span>
-                    <span>{formatPrice(receiptData.amountReceived)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Change:</span>
-                    <span>{formatPrice(receiptData.change)}</span>
-                  </div>
-                </>
-              )}
             </div>
-
-            <div className="text-center text-sm text-gray-600 mb-6">
-              <p>Thank you for your purchase!</p>
-              <p>Please come again.</p>
-            </div>
-
-            <div className="flex justify-center space-x-3">
-              <Button variant="secondary" onClick={() => setIsReceiptModalOpen(false)}>
-                Close
-              </Button>
-              <Button onClick={printReceipt}>
-                Print Receipt
-              </Button>
+            <div className="flex gap-4">
+              <Button variant="ghost" className="flex-1 h-12 rounded-2xl font-bold uppercase" onClick={() => setIsReceiptModalOpen(false)}>Close</Button>
+              <Button className="flex-[2] h-12 rounded-2xl font-black uppercase" onClick={printReceipt}>Print Ticket</Button>
             </div>
           </div>
         )}
       </Modal>
 
-      {/* Settings Modal */}
-      <Modal
-        isOpen={isSettingsModalOpen}
-        onClose={() => setIsSettingsModalOpen(false)}
-        title="POS Settings"
-        size="md"
-      >
-        <div className="space-y-6">
-          <div className="flex justify-end space-x-3">
-            <Button variant="secondary" onClick={() => setIsSettingsModalOpen(false)}>
-              Close
-            </Button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* Transaction Complete Notification */}
-      {transactionComplete && (
-        <div className="fixed bottom-4 right-4">
-          <Card className="bg-green-50 border-green-200">
-            <CardContent>
-              <div className="flex items-center">
-                <svg className="h-5 w-5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-                <div className="ml-3">
-                  <p className="text-sm font-medium text-green-800">Transaction completed successfully!</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
+      <style jsx global>{`
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      `}</style>
     </div>
+  );
+}
+
+function PaymentTab({ active, onClick, icon, label }: any) {
+  return (
+    <button onClick={onClick} className={`flex flex-col items-center justify-center h-24 rounded-3xl border-2 transition-all gap-2 ${active ? 'bg-primary border-primary text-white shadow-xl' : 'bg-white dark:bg-gray-900 border-gray-100 text-gray-400'}`}>
+      {icon}
+      <span className="text-[10px] font-black uppercase tracking-widest">{label}</span>
+    </button>
   );
 }

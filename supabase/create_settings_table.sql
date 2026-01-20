@@ -6,6 +6,11 @@ CREATE TABLE IF NOT EXISTS settings (
   store_phone TEXT NOT NULL,
   tax_rate DECIMAL(5, 2) DEFAULT 0.00,
   currency_code TEXT DEFAULT 'PHP',
+  receipt_header TEXT,
+  receipt_footer TEXT,
+  show_tax_on_receipt BOOLEAN DEFAULT TRUE,
+  show_address_on_receipt BOOLEAN DEFAULT TRUE,
+  show_phone_on_receipt BOOLEAN DEFAULT TRUE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

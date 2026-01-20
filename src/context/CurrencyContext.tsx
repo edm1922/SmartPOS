@@ -57,7 +57,12 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
   }, [currency]);
 
   const formatPrice = (amount: number): string => {
-    return `${currency.symbol}${amount.toFixed(currency.decimalPlaces)}`;
+    return new Intl.NumberFormat('en-PH', {
+      style: 'currency',
+      currency: currency.code,
+      minimumFractionDigits: currency.decimalPlaces,
+      maximumFractionDigits: currency.decimalPlaces,
+    }).format(amount);
   };
 
   return (

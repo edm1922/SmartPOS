@@ -17,7 +17,7 @@ if (process.env.NODE_ENV !== 'test') {
 }
 
 // Create Supabase client for browser usage
-export const supabase = typeof window !== 'undefined' 
+export const supabase = typeof window !== 'undefined'
   ? createBrowserClient(supabaseUrl, supabaseAnonKey)
   : createClient(supabaseUrl, supabaseAnonKey);
 
@@ -25,7 +25,7 @@ export const supabase = typeof window !== 'undefined'
 export const handleSupabaseError = (error: any, operation: string) => {
   if (error) {
     console.error(`Supabase operation failed: ${operation}`, error);
-    
+
     // Handle specific error types
     if (error.message) {
       switch (error.message) {
@@ -37,10 +37,10 @@ export const handleSupabaseError = (error: any, operation: string) => {
           return error.message || 'An unexpected error occurred. Please try again.';
       }
     }
-    
+
     return 'An unexpected error occurred. Please try again.';
   }
-  
+
   return null;
 };
 
@@ -52,69 +52,69 @@ export const supabaseAuth = {
       if (process.env.NODE_ENV === 'test') {
         return { data: null, error: null };
       }
-      
+
       console.log('Attempting to sign in with email and password:', email);
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
-      
+
       console.log('Supabase auth response:', { data, error });
-      
+
       const errorMessage = handleSupabaseError(error, 'sign in');
       if (errorMessage) {
         throw new Error(errorMessage);
       }
-      
+
       return { data, error: null };
     } catch (error: any) {
       console.error('Error in signInWithEmail:', error);
       return { data: null, error: error.message };
     }
   },
-  
+
   async signOut() {
     try {
       // Return early if we're in a test environment
       if (process.env.NODE_ENV === 'test') {
         return { error: null };
       }
-      
+
       console.log('Attempting to sign out');
       const { error } = await supabase.auth.signOut();
-      
+
       console.log('Sign out response:', { error });
-      
+
       const errorMessage = handleSupabaseError(error, 'sign out');
       if (errorMessage) {
         throw new Error(errorMessage);
       }
-      
+
       return { error: null };
     } catch (error: any) {
       console.error('Error in signOut:', error);
       return { error: error.message };
     }
   },
-  
+
   async getSession() {
     try {
       // Return early if we're in a test environment
       if (process.env.NODE_ENV === 'test') {
         return { data: { session: null }, error: null };
       }
-      
+
       console.log('Getting session from Supabase');
       const { data, error } = await supabase.auth.getSession();
-      
+
       console.log('Session data:', data);
       console.log('Session error:', error);
-      
+
       const errorMessage = handleSupabaseError(error, 'get session');
       if (errorMessage) {
         throw new Error(errorMessage);
       }
-      
+
       return { data, error: null };
     } catch (error: any) {
       console.error('Error in getSession:', error);
@@ -130,131 +130,131 @@ export const supabaseDB = {
       if (process.env.NODE_ENV === 'test') {
         return { data: [], error: null };
       }
-      
+
       const { data, error } = await supabase
         .from('products')
         .select('*')
         .order('created_at', { ascending: false });
-      
+
       const errorMessage = handleSupabaseError(error, 'fetch products');
       if (errorMessage) {
         throw new Error(errorMessage);
       }
-      
+
       return { data, error: null };
     } catch (error: any) {
       return { data: null, error: error.message };
     }
   },
-  
+
   async deleteProduct(productId: string) {
     try {
       // Return early if we're in a test environment
       if (process.env.NODE_ENV === 'test') {
         return { data: {}, error: null };
       }
-      
+
       console.log('Attempting to delete product with ID:', productId);
-      
+
       const { data, error } = await supabase
         .from('products')
         .delete()
         .eq('id', productId);
-      
+
       console.log('Delete operation result:', { data, error });
-      
+
       // Check if any rows were affected
       if (data && (data as any[]).length === 0) {
         console.warn('No rows were deleted. This might indicate a permission issue or that the product does not exist.');
       }
-      
+
       const errorMessage = handleSupabaseError(error, 'delete product');
       if (errorMessage) {
         throw new Error(errorMessage);
       }
-      
+
       return { data, error: null };
     } catch (error: any) {
       console.error('Exception in deleteProduct:', error);
       return { data: null, error: error.message };
     }
   },
-  
+
   async addProduct(product: any) {
     try {
       // Return early if we're in a test environment
       if (process.env.NODE_ENV === 'test') {
         return { data: {}, error: null };
       }
-      
+
       const { data, error } = await supabase
         .from('products')
         .insert(product);
-      
+
       const errorMessage = handleSupabaseError(error, 'add product');
       if (errorMessage) {
         throw new Error(errorMessage);
       }
-      
+
       return { data, error: null };
     } catch (error: any) {
       return { data: null, error: error.message };
     }
   },
-  
+
   async updateProduct(productId: string, product: any) {
     try {
       // Return early if we're in a test environment
       if (process.env.NODE_ENV === 'test') {
         return { data: {}, error: null };
       }
-      
+
       const { data, error } = await supabase
         .from('products')
         .update(product)
         .eq('id', productId);
-      
+
       const errorMessage = handleSupabaseError(error, 'update product');
       if (errorMessage) {
         throw new Error(errorMessage);
       }
-      
+
       return { data, error: null };
     } catch (error: any) {
       return { data: null, error: error.message };
     }
   },
-  
+
   async updateProductStock(productId: string, quantity: number) {
     try {
       // Return early if we're in a test environment
       if (process.env.NODE_ENV === 'test') {
         return { data: {}, error: null };
       }
-      
+
       const { data, error } = await supabase
         .from('products')
         .update({ stock_quantity: quantity })
         .eq('id', productId);
-      
+
       const errorMessage = handleSupabaseError(error, 'update product stock');
       if (errorMessage) {
         throw new Error(errorMessage);
       }
-      
+
       return { data, error: null };
     } catch (error: any) {
       return { data: null, error: error.message };
     }
   },
-  
+
   async getUserRole(userId: string) {
     try {
       // Return early if we're in a test environment
       if (process.env.NODE_ENV === 'test') {
         return { data: { role: 'admin' }, error: null };
       }
-      
+
       // First, try to get the user role from the session JWT
       const { data: { session } } = await supabase.auth.getSession();
       console.log('Session in getUserRole:', session);
@@ -262,7 +262,7 @@ export const supabaseDB = {
         console.log('Found user role in session JWT:', session.user.app_metadata.user_role);
         return { data: { role: session.user.app_metadata.user_role }, error: null };
       }
-      
+
       // If not available in JWT, try to fetch from database
       // But handle the case where there might be RLS issues
       try {
@@ -272,20 +272,20 @@ export const supabaseDB = {
           .select('role')
           .eq('id', userId)
           .single();
-        
+
         console.log('Database response for user role:', { data, error });
-        
+
         // If we get a specific RLS error, handle it gracefully
         if (error && error.message && error.message.includes('recursion')) {
           console.warn('RLS recursion detected, returning null user data');
           return { data: null, error: 'RLS recursion error' };
         }
-        
+
         const errorMessage = handleSupabaseError(error, 'fetch user role');
         if (errorMessage) {
           throw new Error(errorMessage);
         }
-        
+
         return { data, error: null };
       } catch (dbError: any) {
         // If there's a database error (like the recursion issue), handle it gracefully
@@ -297,45 +297,45 @@ export const supabaseDB = {
       return { data: null, error: error.message };
     }
   },
-  
+
   async getSettings() {
     try {
       // Return early if we're in a test environment
       if (process.env.NODE_ENV === 'test') {
         return { data: null, error: null };
       }
-      
+
       const { data, error } = await supabase
         .from('settings')
         .select('*')
         .limit(1)
         .single();
-      
+
       const errorMessage = handleSupabaseError(error, 'fetch settings');
       if (errorMessage) {
         throw new Error(errorMessage);
       }
-      
+
       return { data, error: null };
     } catch (error: any) {
       return { data: null, error: error.message };
     }
   },
-  
+
   async updateSettings(settings: any) {
     try {
       // Return early if we're in a test environment
       if (process.env.NODE_ENV === 'test') {
         return { data: {}, error: null };
       }
-      
+
       // Check if settings exist
       const { data: existingSettings } = await supabase
         .from('settings')
         .select('id')
         .limit(1)
         .single();
-      
+
       let result;
       if (existingSettings) {
         // Update existing settings
@@ -349,27 +349,27 @@ export const supabaseDB = {
           .from('settings')
           .insert(settings);
       }
-      
+
       const { data, error } = result;
-      
+
       const errorMessage = handleSupabaseError(error, 'update settings');
       if (errorMessage) {
         throw new Error(errorMessage);
       }
-      
+
       return { data, error: null };
     } catch (error: any) {
       return { data: null, error: error.message };
     }
   },
-  
+
   async logActivity(userId: string, action: string, description: string) {
     try {
       // Return early if we're in a test environment
       if (process.env.NODE_ENV === 'test') {
         return { data: {}, error: null };
       }
-      
+
       const { data, error } = await supabase
         .from('activity_logs')
         .insert({
@@ -377,16 +377,39 @@ export const supabaseDB = {
           action,
           description
         });
-      
+
       const errorMessage = handleSupabaseError(error, 'log activity');
       if (errorMessage) {
         throw new Error(errorMessage);
       }
-      
+
       return { data, error: null };
     } catch (error: any) {
       console.error('Error logging activity:', error);
       return { data: null, error: error.message };
+    }
+  },
+
+  async uploadProductImage(file: File) {
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Math.random().toString(36).substring(2)}_${Date.now()}.${fileExt}`;
+      const filePath = `product-images/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('products')
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('products')
+        .getPublicUrl(filePath);
+
+      return { publicUrl, error: null };
+    } catch (error: any) {
+      console.error('Error uploading image:', error);
+      return { publicUrl: null, error: error.message };
     }
   }
 };

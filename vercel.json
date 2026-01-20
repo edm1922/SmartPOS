@@ -1,18 +1,5 @@
 {
   "version": 2,
-  "public": false,
-  "github": {
-    "enabled": false
-  },
-  "builds": [
-    {
-      "src": "package.json",
-      "use": "@vercel/next",
-      "config": {
-        "includeFiles": ["next.config.js"]
-      }
-    }
-  ],
   "headers": [
     {
       "source": "/(.*)",

@@ -1,5 +1,7 @@
 'use client';
 
+import * as bcrypt from 'bcryptjs';
+
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
@@ -15,13 +17,13 @@ export default function CashierLogin() {
     console.log('=== CASHIER LOGIN PROCESS STARTED ===');
     console.log('Identifier (username):', identifier);
     console.log('Password: [HIDDEN]');
-    
+
     setLoading(true);
     setError('');
 
     try {
       console.log('Attempting to authenticate cashier');
-      
+
       // First, authenticate against the cashiers table
       const { data: cashierData, error: cashierError } = await supabase
         .from('cashiers')
@@ -47,15 +49,16 @@ export default function CashierLogin() {
         throw new Error('Invalid username or password');
       }
 
-      // In a real implementation, you would hash the password and compare
-      // For now, we're doing a simple comparison
-      if (cashierData.password !== password) {
+      // Verify password using bcrypt
+      const isPasswordCorrect = await bcrypt.compare(password, cashierData.password);
+
+      if (!isPasswordCorrect) {
         console.log('Password mismatch for user:', identifier);
         throw new Error('Invalid username or password');
       }
 
       console.log('Cashier authenticated successfully');
-      
+
       // Store cashier info in session storage for the POS terminal to use
       if (typeof window !== 'undefined') {
         sessionStorage.setItem('cashier_id', cashierData.id);
@@ -64,11 +67,11 @@ export default function CashierLogin() {
         localStorage.setItem('cashier_session', 'true');
         document.cookie = 'cashier_session=true; path=/; max-age=86400'; // 24 hours
       }
-      
+
       console.log('Redirecting to cashier POS');
       // Reset loading state before navigation
       setLoading(false);
-      
+
       // Force a navigation using window.location for more reliable redirect
       if (typeof window !== 'undefined') {
         window.location.href = '/cashier/pos';
@@ -79,7 +82,7 @@ export default function CashierLogin() {
       setError(error.message || 'An unexpected error occurred');
       setLoading(false); // Reset loading state on error
     }
-    
+
     console.log('=== CASHIER LOGIN PROCESS COMPLETED ===');
   };
 

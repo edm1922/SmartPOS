@@ -5,22 +5,24 @@ import { useRouter } from 'next/navigation';
 import { supabase, supabaseAuth, supabaseDB } from '@/lib/supabaseClient';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
-import { 
-  Card, 
-  CardHeader, 
-  CardContent, 
+import {
+  Card,
+  CardHeader,
+  CardContent,
   CardFooter,
   CardTitle,
   CardDescription
 } from '@/components/ui/Card';
 import { useCurrency } from '@/context/CurrencyContext';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
+import { PRODUCT_CATEGORIES } from '@/lib/constants';
 
 interface Product {
   id: string;
   name: string;
   price: number;
   barcode?: string;
+  category?: string;
   stock_quantity: number;
   created_at: string;
 }
@@ -42,25 +44,26 @@ export default function CashierPOS() {
   const [transactionComplete, setTransactionComplete] = useState(false);
   const [receiptData, setReceiptData] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null); // For success notifications
   const barcodeInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const checkUser = async () => {
       const { data: sessionData, error: sessionError } = await supabaseAuth.getSession();
-      
+
       // Check for our custom cashier session
       const cashierSession = typeof window !== 'undefined' ? localStorage.getItem('cashier_session') : null;
       const cashierId = typeof window !== 'undefined' ? sessionStorage.getItem('cashier_id') : null;
       const cashierUsername = typeof window !== 'undefined' ? sessionStorage.getItem('cashier_username') : null;
-      
-      console.log('Session check:', { 
-        supabaseSession: !!sessionData?.session, 
-        cashierSession, 
-        cashierId, 
-        cashierUsername 
+
+      console.log('Session check:', {
+        supabaseSession: !!sessionData?.session,
+        cashierSession,
+        cashierId,
+        cashierUsername
       });
-      
+
       if ((!sessionData?.session && !cashierSession) || !cashierId || !cashierUsername) {
         console.log('No valid session, redirecting to cashier login');
         if (typeof window !== 'undefined') {
@@ -87,7 +90,7 @@ export default function CashierPOS() {
   useEffect(() => {
     // Fetch products from Supabase
     fetchProducts();
-    
+
     // Set up real-time listener for product updates
     const channel = supabase
       .channel('products-changes')
@@ -143,7 +146,7 @@ export default function CashierPOS() {
       if (error) {
         throw new Error(error);
       }
-      
+
       setProducts(data || []);
     } catch (error: any) {
       console.error('Error fetching products:', error);
@@ -159,13 +162,13 @@ export default function CashierPOS() {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
         return;
       }
-      
+
       // Focus barcode input on any key press except Escape
       if (e.key !== 'Escape') {
         barcodeInputRef.current.focus();
       }
     }
-    
+
     // Global keyboard shortcuts
     if (e.ctrlKey || e.metaKey) {
       switch (e.key) {
@@ -195,7 +198,7 @@ export default function CashierPOS() {
           break;
       }
     }
-    
+
     // ESC to close modals
     if (e.key === 'Escape') {
       if (isPaymentModalOpen) {
@@ -206,12 +209,12 @@ export default function CashierPOS() {
         setIsSettingsModalOpen(false);
       }
     }
-    
+
     // Enter in barcode input
     if (e.key === 'Enter' && e.target === barcodeInputRef.current) {
       const barcode = (e.target as HTMLInputElement).value;
       const product = products.find(p => p.barcode === barcode);
-      
+
       if (product) {
         addToCart(product);
         (e.target as HTMLInputElement).value = ''; // Clear the input
@@ -227,7 +230,7 @@ export default function CashierPOS() {
 
   const handleSignOut = async () => {
     const { error } = await supabaseAuth.signOut();
-    
+
     // Clean up our custom cashier session
     if (typeof window !== 'undefined') {
       localStorage.removeItem('cashier_session');
@@ -236,12 +239,12 @@ export default function CashierPOS() {
       // Also remove the cookie
       document.cookie = 'cashier_session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
     }
-    
+
     if (error) {
       setError(error);
       return;
     }
-    
+
     router.push('/');
   };
 
@@ -251,7 +254,7 @@ export default function CashierPOS() {
       setError('Product is out of stock');
       return;
     }
-    
+
     const existingItem = cart.find(item => item.id === product.id);
     if (existingItem) {
       // Check if adding another would exceed stock
@@ -259,22 +262,22 @@ export default function CashierPOS() {
         setError('Not enough stock available');
         return;
       }
-      
-      setCart(cart.map(item => 
-        item.id === product.id 
-          ? { ...item, quantity: item.quantity + 1 } 
+
+      setCart(cart.map(item =>
+        item.id === product.id
+          ? { ...item, quantity: item.quantity + 1 }
           : item
       ));
-      
+
       // Show success feedback
       setSuccessMessage(`Added another ${product.name} to cart`);
     } else {
       setCart([...cart, { ...product, quantity: 1 }]);
-      
+
       // Show success feedback
       setSuccessMessage(`Added ${product.name} to cart`);
     }
-    
+
     // Clear success message after 2 seconds
     setTimeout(() => {
       setSuccessMessage(null);
@@ -284,7 +287,7 @@ export default function CashierPOS() {
   const removeFromCart = (productId: string) => {
     const product = cart.find(item => item.id === productId);
     setCart(cart.filter(item => item.id !== productId));
-    
+
     // Show success feedback
     if (product) {
       setSuccessMessage(`Removed ${product.name} from cart`);
@@ -299,23 +302,23 @@ export default function CashierPOS() {
       removeFromCart(productId);
       return;
     }
-    
+
     // Find the product to check stock
     const product = products.find(p => p.id === productId);
     if (product && quantity > product.stock_quantity) {
       setError('Not enough stock available');
       return;
     }
-    
+
     // Find the current item in cart
     const currentItem = cart.find(item => item.id === productId);
-    
-    setCart(cart.map(item => 
-      item.id === productId 
-        ? { ...item, quantity } 
+
+    setCart(cart.map(item =>
+      item.id === productId
+        ? { ...item, quantity }
         : item
     ));
-    
+
     // Show success feedback for significant changes
     if (product && currentItem && Math.abs(quantity - currentItem.quantity) >= 1) {
       setSuccessMessage(`Updated ${product.name} quantity to ${quantity}`);
@@ -354,32 +357,32 @@ export default function CashierPOS() {
       // Show loading state
       setError(null);
       setSuccessMessage('Processing transaction...');
-      
+
       // Get the real cashier ID from sessionStorage
       const cashierId = typeof window !== 'undefined' ? sessionStorage.getItem('cashier_id') : null;
-      
+
       if (!cashierId) {
         throw new Error('Cashier information not found. Please log in again.');
       }
 
       console.log('Creating transaction for cashier ID:', cashierId);
-      
+
       // Validate that the cashier exists and is active
       const { data: cashierData, error: cashierError } = await supabase
         .from('cashiers')
         .select('id, username, is_active')
         .eq('id', cashierId)
         .single();
-        
+
       if (cashierError) {
         console.error('Error validating cashier:', cashierError);
         throw new Error(`Failed to validate cashier: ${cashierError.message || 'Unknown error'}`);
       }
-      
+
       if (!cashierData || !cashierData.is_active) {
         throw new Error('Cashier account is not active. Please contact administrator.');
       }
-      
+
       console.log('Cashier validated:', cashierData);
 
       // Save transaction to database
@@ -389,12 +392,12 @@ export default function CashierPOS() {
         payment_method: paymentMethod,
         status: 'completed'
       };
-      
+
       console.log('Transaction payload:', transactionPayload);
-      
+
       // Add a small delay to ensure the cashier validation is complete
       await new Promise(resolve => setTimeout(resolve, 100));
-      
+
       // Enhanced error handling with detailed logging
       const { data: transactionData, error: transactionError } = await supabase
         .from('transactions')
@@ -409,7 +412,7 @@ export default function CashierPOS() {
           url: process.env.NEXT_PUBLIC_SUPABASE_URL,
           hasAnonKey: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
         });
-        
+
         // Provide more specific error information
         const errorMessage = transactionError.message || 'Unknown database error';
         // Add more context to the error message
@@ -420,7 +423,7 @@ export default function CashierPOS() {
         }
         throw new Error(`Failed to create transaction: ${errorMessage}`);
       }
-      
+
       console.log('Transaction created:', transactionData);
 
       // Save transaction items
@@ -430,7 +433,7 @@ export default function CashierPOS() {
         quantity: item.quantity,
         price: item.price
       }));
-      
+
       console.log('Transaction items to insert:', transactionItems);
 
       const { error: itemsError } = await supabase
@@ -443,7 +446,7 @@ export default function CashierPOS() {
         const errorMessage = itemsError.message || 'Unknown database error';
         throw new Error(`Failed to save transaction items: ${errorMessage}`);
       }
-      
+
       console.log('Transaction items saved successfully');
 
       // Update inventory in Supabase
@@ -453,16 +456,16 @@ export default function CashierPOS() {
         if (product) {
           const newStock = product.stock_quantity - item.quantity;
           console.log(`Updating stock for product ${product.id}: ${product.stock_quantity} -> ${newStock}`);
-          
+
           const { error } = await supabaseDB.updateProductStock(item.id, newStock);
-            
+
           if (error) {
             console.error('Error updating inventory for product:', item.id, error);
             inventoryUpdateErrors++;
           }
         }
       }
-      
+
       if (inventoryUpdateErrors > 0) {
         console.warn(`Failed to update inventory for ${inventoryUpdateErrors} products`);
         // Don't throw an error here as the transaction was successful
@@ -470,7 +473,7 @@ export default function CashierPOS() {
       } else {
         setSuccessMessage('Transaction completed successfully!');
       }
-      
+
       // Prepare receipt data
       const receiptData = {
         id: transactionData.id,
@@ -481,21 +484,21 @@ export default function CashierPOS() {
         amountReceived: paymentMethod === 'cash' ? parseFloat(amountReceived) || 0 : calculateTotal(),
         change: paymentMethod === 'cash' ? calculateChange() : 0,
       };
-      
+
       console.log('Transaction completed:', receiptData);
-      
+
       // Set receipt data
       setReceiptData(receiptData);
-      
+
       // Reset cart and close modal
       setCart([]);
       setIsPaymentModalOpen(false);
       setTransactionComplete(true);
       setAmountReceived('');
-      
+
       // Show receipt modal
       setIsReceiptModalOpen(true);
-      
+
       // Show success message for 3 seconds
       setTimeout(() => {
         setTransactionComplete(false);
@@ -507,7 +510,7 @@ export default function CashierPOS() {
       const errorMessage = error.message || 'Error completing transaction. Please try again.';
       setError(errorMessage);
       setSuccessMessage(null);
-      
+
       // If it's a 401 error, suggest checking the database configuration
       if (errorMessage.includes('401') || errorMessage.includes('Authentication failed')) {
         setError(`${errorMessage} - Please ensure the database security policies have been applied. See APPLY_DATABASE_FIXES.md for instructions.`);
@@ -521,10 +524,12 @@ export default function CashierPOS() {
     alert('Receipt would be printed in a real application');
   };
 
-  const filteredProducts = products.filter(product => 
-    product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (product.barcode && product.barcode.includes(searchTerm))
-  );
+  const filteredProducts = products.filter(product => {
+    const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (product.barcode && product.barcode.includes(searchTerm));
+    const matchesCategory = !selectedCategory || product.category === selectedCategory;
+    return matchesSearch && matchesCategory;
+  });
 
   if (loading) {
     return (
@@ -613,18 +618,18 @@ export default function CashierPOS() {
             </div>
             <div className="hidden sm:ml-6 sm:flex sm:items-center space-x-2">
               <ThemeToggle />
-              <Button 
-                onClick={() => setIsSettingsModalOpen(true)} 
-                variant="outline" 
-                size="sm" 
+              <Button
+                onClick={() => setIsSettingsModalOpen(true)}
+                variant="outline"
+                size="sm"
                 className="mr-2 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
               >
                 Settings (Ctrl+,)
               </Button>
-              <Button 
-                onClick={handleSignOut} 
-                variant="outline" 
-                size="sm" 
+              <Button
+                onClick={handleSignOut}
+                variant="outline"
+                size="sm"
                 className="mr-2 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
               >
                 Sign out (Ctrl+S)
@@ -653,7 +658,7 @@ export default function CashierPOS() {
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
-            
+
             {/* Barcode Scanner Input */}
             <div className="relative rounded-md shadow-sm">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -671,12 +676,35 @@ export default function CashierPOS() {
                 <span className="text-xs text-gray-500 dark:text-gray-400">Enter↵</span>
               </div>
             </div>
+
+            {/* Category Filter */}
+            <div className="flex flex-wrap gap-2 mt-4">
+              <Button
+                variant={selectedCategory === null ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setSelectedCategory(null)}
+                className="rounded-full"
+              >
+                All
+              </Button>
+              {PRODUCT_CATEGORIES.map((category) => (
+                <Button
+                  key={category}
+                  variant={selectedCategory === category ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setSelectedCategory(category)}
+                  className="rounded-full"
+                >
+                  {category}
+                </Button>
+              ))}
+            </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {filteredProducts.map((product) => (
-              <div 
-                key={product.id} 
+              <div
+                key={product.id}
                 className="cursor-pointer"
                 onClick={() => addToCart(product)}
               >
@@ -687,20 +715,19 @@ export default function CashierPOS() {
                         <h3 className="text-lg font-medium text-gray-900 dark:text-white">{product.name}</h3>
                         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Barcode: {product.barcode || 'N/A'}</p>
                         <p className="mt-1 text-sm">
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            product.stock_quantity > 10 
-                              ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' 
-                              : product.stock_quantity > 0 
-                                ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' 
-                                : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
-                          }`}>
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${product.stock_quantity > 10
+                            ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                            : product.stock_quantity > 0
+                              ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
+                              : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+                            }`}>
                             Stock: {product.stock_quantity}
                           </span>
                         </p>
                       </div>
                       <p className="text-lg font-bold text-primary-600 dark:text-primary-400">{formatPrice(product.price)}</p>
                     </div>
-                    <Button 
+                    <Button
                       className={`mt-4 w-full ${successMessage && successMessage.includes(product.name) ? 'animate-pulse-once' : ''}`}
                       onClick={(e) => {
                         e.stopPropagation();
@@ -724,7 +751,7 @@ export default function CashierPOS() {
             <CardHeader>
               <CardTitle className="text-lg font-medium text-gray-900 dark:text-white">Shopping Cart</CardTitle>
             </CardHeader>
-            
+
             <CardContent className="p-4">
               {cart.length === 0 ? (
                 <div className="text-center py-8">
@@ -744,7 +771,7 @@ export default function CashierPOS() {
                         <p className="text-sm text-gray-500 dark:text-gray-400">Stock: {item.stock_quantity}</p>
                       </div>
                       <div className="flex items-center space-x-2">
-                        <Button 
+                        <Button
                           onClick={() => updateQuantity(item.id, item.quantity - 1)}
                           variant="secondary"
                           size="sm"
@@ -753,7 +780,7 @@ export default function CashierPOS() {
                           -
                         </Button>
                         <span className="w-8 text-center text-sm font-medium text-gray-900 dark:text-white">{item.quantity}</span>
-                        <Button 
+                        <Button
                           onClick={() => updateQuantity(item.id, item.quantity + 1)}
                           variant="secondary"
                           size="sm"
@@ -762,7 +789,7 @@ export default function CashierPOS() {
                         >
                           +
                         </Button>
-                        <Button 
+                        <Button
                           onClick={() => removeFromCart(item.id)}
                           variant="destructive"
                           size="sm"
@@ -778,13 +805,13 @@ export default function CashierPOS() {
                 </div>
               )}
             </CardContent>
-            
+
             <CardFooter className="p-4 bg-white dark:bg-gray-800">
               <div className={`flex justify-between text-lg font-bold mb-4 ${successMessage ? 'animate-pulse-once' : ''}`}>
                 <span className="text-gray-900 dark:text-white">Total:</span>
                 <span className="text-gray-900 dark:text-white">{formatPrice(calculateTotal())}</span>
               </div>
-              <Button 
+              <Button
                 className="w-full"
                 disabled={cart.length === 0}
                 onClick={handleProcessPayment}
@@ -798,9 +825,9 @@ export default function CashierPOS() {
       </div>
 
       {/* Payment Modal */}
-      <Modal 
-        isOpen={isPaymentModalOpen} 
-        onClose={() => setIsPaymentModalOpen(false)} 
+      <Modal
+        isOpen={isPaymentModalOpen}
+        onClose={() => setIsPaymentModalOpen(false)}
         title="Process Payment"
         size="md"
       >
@@ -825,33 +852,30 @@ export default function CashierPOS() {
             <div className="grid grid-cols-3 gap-2">
               <button
                 type="button"
-                className={`py-2 px-4 border rounded-md text-sm font-medium ${
-                  paymentMethod === 'cash'
-                    ? 'bg-primary-100 border-primary-500 text-primary-700'
-                    : 'border-gray-300 text-gray-700 hover:bg-gray-50'
-                }`}
+                className={`py-2 px-4 border rounded-md text-sm font-medium ${paymentMethod === 'cash'
+                  ? 'bg-primary-100 border-primary-500 text-primary-700'
+                  : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+                  }`}
                 onClick={() => setPaymentMethod('cash')}
               >
                 Cash
               </button>
               <button
                 type="button"
-                className={`py-2 px-4 border rounded-md text-sm font-medium ${
-                  paymentMethod === 'card'
-                    ? 'bg-primary-100 border-primary-500 text-primary-700'
-                    : 'border-gray-300 text-gray-700 hover:bg-gray-50'
-                }`}
+                className={`py-2 px-4 border rounded-md text-sm font-medium ${paymentMethod === 'card'
+                  ? 'bg-primary-100 border-primary-500 text-primary-700'
+                  : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+                  }`}
                 onClick={() => setPaymentMethod('card')}
               >
                 Card
               </button>
               <button
                 type="button"
-                className={`py-2 px-4 border rounded-md text-sm font-medium ${
-                  paymentMethod === 'mobile'
-                    ? 'bg-primary-100 border-primary-500 text-primary-700'
-                    : 'border-gray-300 text-gray-700 hover:bg-gray-50'
-                }`}
+                className={`py-2 px-4 border rounded-md text-sm font-medium ${paymentMethod === 'mobile'
+                  ? 'bg-primary-100 border-primary-500 text-primary-700'
+                  : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+                  }`}
                 onClick={() => setPaymentMethod('mobile')}
               >
                 Mobile
@@ -898,9 +922,9 @@ export default function CashierPOS() {
       </Modal>
 
       {/* Receipt Modal */}
-      <Modal 
-        isOpen={isReceiptModalOpen} 
-        onClose={() => setIsReceiptModalOpen(false)} 
+      <Modal
+        isOpen={isReceiptModalOpen}
+        onClose={() => setIsReceiptModalOpen(false)}
         title="Receipt"
         size="md"
       >
@@ -911,7 +935,7 @@ export default function CashierPOS() {
               <p className="text-gray-600">123 Main Street, City, State 12345</p>
               <p className="text-gray-600">Phone: (555) 123-4567</p>
             </div>
-            
+
             <div className="border-t border-b border-gray-200 py-4 mb-4">
               <div className="flex justify-between mb-2">
                 <span className="text-gray-600">Transaction ID:</span>
@@ -922,7 +946,7 @@ export default function CashierPOS() {
                 <span>{receiptData.date}</span>
               </div>
             </div>
-            
+
             <div className="mb-4">
               <h3 className="font-medium mb-2">Items:</h3>
               <div className="space-y-2">
@@ -937,7 +961,7 @@ export default function CashierPOS() {
                 ))}
               </div>
             </div>
-            
+
             <div className="border-t border-gray-200 pt-4 mb-6">
               <div className="flex justify-between mb-2">
                 <span className="text-gray-600">Subtotal:</span>
@@ -968,12 +992,12 @@ export default function CashierPOS() {
                 </>
               )}
             </div>
-            
+
             <div className="text-center text-sm text-gray-600 mb-6">
               <p>Thank you for your purchase!</p>
               <p>Please come again.</p>
             </div>
-            
+
             <div className="flex justify-center space-x-3">
               <Button variant="secondary" onClick={() => setIsReceiptModalOpen(false)}>
                 Close
@@ -987,9 +1011,9 @@ export default function CashierPOS() {
       </Modal>
 
       {/* Settings Modal */}
-      <Modal 
-        isOpen={isSettingsModalOpen} 
-        onClose={() => setIsSettingsModalOpen(false)} 
+      <Modal
+        isOpen={isSettingsModalOpen}
+        onClose={() => setIsSettingsModalOpen(false)}
         title="POS Settings"
         size="md"
       >

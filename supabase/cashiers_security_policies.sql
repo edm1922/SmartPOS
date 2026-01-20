@@ -17,7 +17,7 @@ CREATE POLICY "Admins can insert cashiers" ON cashiers
   FOR INSERT WITH CHECK (
     EXISTS (
       SELECT 1 FROM public.users 
-      WHERE id = auth.uid() AND role = 'admin' AND is_active = true
+      WHERE id = auth.uid() AND role = 'admin'
     )
   );
 
@@ -27,7 +27,7 @@ CREATE POLICY "Admins can update cashiers" ON cashiers
   FOR UPDATE USING (
     EXISTS (
       SELECT 1 FROM public.users 
-      WHERE id = auth.uid() AND role = 'admin' AND is_active = true
+      WHERE id = auth.uid() AND role = 'admin'
     )
   );
 
@@ -37,7 +37,7 @@ CREATE POLICY "Admins can delete cashiers" ON cashiers
   FOR DELETE USING (
     EXISTS (
       SELECT 1 FROM public.users 
-      WHERE id = auth.uid() AND role = 'admin' AND is_active = true
+      WHERE id = auth.uid() AND role = 'admin'
     )
   );
 

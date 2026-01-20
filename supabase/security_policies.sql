@@ -57,12 +57,12 @@ CREATE POLICY "Admins can manage products" ON products
   FOR ALL USING (
     EXISTS (
       SELECT 1 FROM public.users 
-      WHERE id = auth.uid() AND role = 'admin' AND is_active = true
+      WHERE id = auth.uid() AND role = 'admin'
     )
   ) WITH CHECK (
     EXISTS (
       SELECT 1 FROM public.users 
-      WHERE id = auth.uid() AND role = 'admin' AND is_active = true
+      WHERE id = auth.uid() AND role = 'admin'
     )
   );
 
@@ -73,7 +73,7 @@ CREATE POLICY "Admins can view settings" ON settings
   FOR SELECT USING (
     EXISTS (
       SELECT 1 FROM public.users 
-      WHERE id = auth.uid() AND role = 'admin' AND is_active = true
+      WHERE id = auth.uid() AND role = 'admin'
     )
   );
 
@@ -83,12 +83,12 @@ CREATE POLICY "Admins can manage settings" ON settings
   FOR ALL USING (
     EXISTS (
       SELECT 1 FROM public.users 
-      WHERE id = auth.uid() AND role = 'admin' AND is_active = true
+      WHERE id = auth.uid() AND role = 'admin'
     )
   ) WITH CHECK (
     EXISTS (
       SELECT 1 FROM public.users 
-      WHERE id = auth.uid() AND role = 'admin' AND is_active = true
+      WHERE id = auth.uid() AND role = 'admin'
     )
   );
 
@@ -106,7 +106,7 @@ CREATE POLICY "Authorized users can insert transactions" ON transactions
     -- Allow authenticated users with cashier or admin role
     EXISTS (
       SELECT 1 FROM public.users 
-      WHERE id = auth.uid() AND role IN ('cashier', 'admin') AND is_active = true
+      WHERE id = auth.uid() AND role IN ('cashier', 'admin')
     )
     OR
     -- Allow custom cashier authentication (when using session-based auth)
@@ -122,7 +122,7 @@ CREATE POLICY "Admins can view all transactions" ON transactions
   FOR SELECT USING (
     EXISTS (
       SELECT 1 FROM public.users 
-      WHERE id = auth.uid() AND role = 'admin' AND is_active = true
+      WHERE id = auth.uid() AND role = 'admin'
     )
   );
 
@@ -148,7 +148,7 @@ CREATE POLICY "Admins can view all transaction items" ON transaction_items
   FOR SELECT USING (
     EXISTS (
       SELECT 1 FROM public.users 
-      WHERE id = auth.uid() AND role = 'admin' AND is_active = true
+      WHERE id = auth.uid() AND role = 'admin'
     )
   );
 
@@ -169,7 +169,7 @@ CREATE POLICY "Admins can view all activity logs" ON activity_logs
   FOR SELECT USING (
     EXISTS (
       SELECT 1 FROM public.users 
-      WHERE id = auth.uid() AND role = 'admin' AND is_active = true
+      WHERE id = auth.uid() AND role = 'admin'
     )
   );
 
@@ -224,7 +224,7 @@ RETURNS BOOLEAN AS $$
 BEGIN
   RETURN EXISTS (
     SELECT 1 FROM public.users 
-    WHERE id = user_id AND role = 'admin' AND is_active = true
+    WHERE id = user_id AND role = 'admin'
     LIMIT 1
   );
 END;

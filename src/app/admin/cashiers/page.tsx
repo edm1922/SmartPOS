@@ -1,43 +1,18 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
-import { 
-  Card, 
-  CardHeader, 
-  CardContent, 
-  CardFooter,
-  CardTitle,
-  CardDescription
-} from '@/components/ui/Card';
+import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import {
   Table,
   TableHeader,
   TableBody,
-  TableFooter,
-  TableHead,
   TableRow,
+  TableHead,
   TableCell,
-  TableCaption,
 } from '@/components/ui/Table';
-import { Modal } from '@/components/ui/Modal';
-import { Form, FormField } from '@/components/ui/Form';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
-
-// Define the cashier schema for validation
-const cashierSchema = z.object({
-  username: z.string().min(3, 'Username must be at least 3 characters'),
-  password: z.string().optional(), // Make password optional since we'll auto-generate it
-  email: z.string().email('Invalid email address').or(z.literal('')).optional(), // Optional email field that can be empty
-});
-
-type CashierFormData = z.infer<typeof cashierSchema>;
+import { AddCashierModal } from '@/components/admin/AddCashierModal';
 
 interface Cashier {
   id: string;
@@ -47,559 +22,85 @@ interface Cashier {
 }
 
 export default function CashierManagement() {
-  const [user, setUser] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
   const [cashiers, setCashiers] = useState<Cashier[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const router = useRouter();
 
   useEffect(() => {
-    const checkUser = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (!session) {
-        router.push('/auth/admin/login');
-        return;
-      }
-
-      setUser(session.user);
-      setLoading(false);
-      fetchCashiers();
-    };
-
-    checkUser();
-  }, [router]);
+    fetchCashiers();
+  }, []);
 
   const fetchCashiers = async () => {
     try {
-      console.log('Fetching cashiers from cashiers table...');
-      
-      const { data, error, count } = await supabase
+      const { data, error } = await supabase
         .from('cashiers')
         .select('id, username, email, created_at')
-        .is('deleted_at', null)  // Only fetch cashiers that haven't been soft deleted
+        .is('deleted_at', null)
         .order('created_at', { ascending: false });
 
-      if (error) {
-        console.error('Error fetching cashiers:', error);
-        console.error('Error details:', {
-          message: error.message,
-          code: error.code,
-          hint: error.hint,
-          details: error.details
-        });
-        setError(`Failed to load cashiers: ${error.message}`);
-        return;
-      }
-
-      console.log('Successfully fetched cashiers:', data);
-      console.log('Count of cashiers:', count);
-      
+      if (error) throw error;
       setCashiers(data || []);
     } catch (error: any) {
-      console.error('Exception while fetching cashiers:', error);
-      setError('Failed to load cashiers. Please try again.');
+      setError('Failed to load cashiers.');
     }
-  };
-
-  const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    router.push('/');
-  };
-
-  const handleAddCashier = () => {
-    setIsModalOpen(true);
   };
 
   const handleDeleteCashier = async (cashierId: string) => {
+    if (!confirm('Are you sure you want to delete this cashier?')) return;
     try {
-      console.log('Permanently deleting cashier with ID:', cashierId);
-      
-      // Permanently delete the cashier from the database
-      const { data, error: dbError } = await supabase
-        .from('cashiers')
-        .delete()
-        .eq('id', cashierId)
-        .select();
-
-      if (dbError) {
-        console.error('Error deleting cashier:', dbError);
-        throw new Error(`Database error: ${dbError.message}`);
-      }
-
-      console.log('Cashier permanently deleted successfully:', data);
-      
-      // Update local state
-      setCashiers(cashiers.filter(cashier => cashier.id !== cashierId));
+      const { error } = await supabase.from('cashiers').delete().eq('id', cashierId);
+      if (error) throw error;
+      setCashiers(cashiers.filter(c => c.id !== cashierId));
     } catch (error: any) {
-      console.error('Error deleting cashier:', error);
-      setError(error.message || 'Failed to delete cashier. Please try again.');
+      setError('Failed to delete cashier.');
     }
   };
 
-  // Function to handle when a cashier is added (called from the modal)
-  const handleCashierAdded = () => {
-    fetchCashiers(); // Refresh the cashiers list
-  };
-
-  const navItems = [
-    { name: 'Dashboard', href: '/admin/dashboard' },
-    { name: 'Products', href: '/admin/products' },
-    { name: 'Cashiers', href: '/admin/cashiers' },
-    { name: 'Reports', href: '/admin/reports' },
-    { name: 'Settings', href: '/admin/settings' },
-  ];
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600 dark:text-gray-400">Loading cashier management...</p>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      {/* Mobile menu modal */}
-      <Modal
-        isOpen={isMobileMenuOpen}
-        onClose={() => setIsMobileMenuOpen(false)}
-        title="Navigation"
-        size="fullscreen"
-      >
-        <div className="flex flex-col space-y-4">
-          {navItems.map((item) => (
-            <a
-              key={item.name}
-              href={item.href}
-              className="block px-4 py-3 text-lg font-medium text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors duration-200"
-              onClick={() => setIsMobileMenuOpen(false)}
-            >
-              {item.name}
-            </a>
-          ))}
-        </div>
-      </Modal>
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Cashier Management</h1>
+        <Button onClick={() => setIsModalOpen(true)} className="bg-primary-600 hover:bg-primary-700 text-white">
+          Add Cashier
+        </Button>
+      </div>
 
-      {/* Navigation */}
-      <nav className="bg-white dark:bg-gray-800 shadow">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
-            <div className="flex">
-              <div className="flex-shrink-0 flex items-center">
-                <div className="bg-primary-600 w-8 h-8 rounded-full"></div>
-                <span className="ml-2 text-xl font-bold text-gray-900 dark:text-white">POS Admin</span>
-              </div>
-              {/* Desktop navigation - hidden on mobile */}
-              <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
-                {navItems.map((item) => (
-                  <a
-                    key={item.name}
-                    href={item.href}
-                    className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${
-                      item.href === '/admin/cashiers'
-                        ? 'border-primary-500 text-gray-900 dark:text-white'
-                        : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-300 dark:hover:text-gray-200'
-                    }`}
-                  >
-                    {item.name}
-                  </a>
-                ))}
-              </div>
-            </div>
-            <div className="hidden sm:ml-6 sm:flex sm:items-center">
-              <Button 
-                onClick={handleSignOut} 
-                variant="outline" 
-                size="sm"
-                className="text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
-              >
-                Sign out
-              </Button>
-            </div>
-            {/* Mobile menu button - visible only on mobile */}
-            <div className="flex items-center sm:hidden">
-              <button
-                onClick={() => setIsMobileMenuOpen(true)}
-                className="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary-500"
-              >
-                <span className="sr-only">Open main menu</span>
-                <svg className="block h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                </svg>
-              </button>
-            </div>
-          </div>
-        </div>
-      </nav>
+      {error && <p className="text-red-500">{error}</p>}
 
-      {/* Main content */}
-      <main>
-        <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-          <div className="px-4 py-6 sm:px-0">
-            <div className="flex justify-between items-center mb-6">
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Cashier Management</h1>
-              <Button 
-                onClick={handleAddCashier}
-                className="bg-primary-600 hover:bg-primary-700 text-white"
-              >
-                Add Cashier
-              </Button>
-            </div>
+      <Card className="bg-white dark:bg-gray-800">
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-gray-50 dark:bg-gray-700">
+                <TableHead>Username</TableHead>
+                <TableHead>Email</TableHead>
+                <TableHead>Created At</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {cashiers.map((cashier) => (
+                <TableRow key={cashier.id} className="border-b border-gray-200 dark:border-gray-700">
+                  <TableCell className="font-medium">{cashier.username}</TableCell>
+                  <TableCell>{cashier.email || '-'}</TableCell>
+                  <TableCell>{new Date(cashier.created_at).toLocaleDateString()}</TableCell>
+                  <TableCell className="text-right">
+                    <Button onClick={() => handleDeleteCashier(cashier.id)} variant="destructive" size="sm">
+                      Delete
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
 
-            <Card className="bg-white dark:bg-gray-800">
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-gray-50 dark:bg-gray-700">
-                      <TableHead className="text-gray-900 dark:text-white">Username</TableHead>
-                      <TableHead className="text-gray-900 dark:text-white">Email</TableHead>
-                      <TableHead className="text-gray-900 dark:text-white">Created At</TableHead>
-                      <TableHead className="text-right text-gray-900 dark:text-white">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {cashiers.map((cashier) => (
-                      <TableRow key={cashier.id} className="border-b border-gray-200 dark:border-gray-700">
-                        <TableCell className="font-medium text-gray-900 dark:text-white">{cashier.username}</TableCell>
-                        <TableCell className="text-gray-500 dark:text-gray-400">{cashier.email || '-'}</TableCell>
-                        <TableCell className="text-gray-500 dark:text-gray-400">{new Date(cashier.created_at).toLocaleDateString()}</TableCell>
-                        <TableCell className="text-right">
-                          <Button 
-                            onClick={() => handleDeleteCashier(cashier.id)}
-                            variant="destructive"
-                            size="sm"
-                          >
-                            Delete
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-      </main>
+      <AddCashierModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onCashierAdded={fetchCashiers}
+      />
     </div>
   );
 }
-
-interface AddCashierModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  onCashierAdded: () => void;
-}
-
-// Add interface for cashier creation result
-interface CreatedCashier {
-  id: string;
-  username: string;
-  password: string;
-  email: string | null;
-}
-
-const AddCashierModal: React.FC<AddCashierModalProps> = ({ isOpen, onClose, onCashierAdded }) => {
-  const form = useForm<CashierFormData>({
-    resolver: zodResolver(cashierSchema),
-    defaultValues: {
-      username: '',
-    },
-  });
-
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [createdCashier, setCreatedCashier] = useState<CreatedCashier | null>(null); // Store created cashier info
-  const [generatedPassword, setGeneratedPassword] = useState<string | null>(null); // Store generated password
-
-  const onSubmit = async (data: CashierFormData) => {
-    setLoading(true);
-    setError(null);
-    setCreatedCashier(null);
-    setGeneratedPassword(null);
-    
-    try {
-      console.log('Creating cashier:', data.username);
-      
-      // Generate a random password if not provided
-      const password = data.password || generateRandomPassword();
-      setGeneratedPassword(password); // Store the generated password
-      
-      // Create cashier in the cashiers table
-      const { data: cashierData, error: dbError } = await supabase
-        .from('cashiers')
-        .insert({
-          username: data.username,
-          password: password, // In a real implementation, this should be hashed
-          email: data.email || null,
-        })
-        .select()
-        .single();
-
-      if (dbError) {
-        console.error('Error creating cashier:', dbError);
-        console.error('Error details:', {
-          message: dbError.message,
-          code: dbError.code,
-          hint: dbError.hint,
-          details: dbError.details
-        });
-        throw new Error(`Database error: ${dbError.message}`);
-      }
-
-      console.log('Cashier created successfully:', cashierData);
-      
-      // Store created cashier info
-      setCreatedCashier({
-        id: cashierData.id,
-        username: cashierData.username,
-        password: password,
-        email: cashierData.email
-      });
-      
-      // Refresh cashiers list
-      onCashierAdded();
-    } catch (error: any) {
-      console.error('Error creating cashier:', error);
-      setError(error.message || 'Failed to create cashier. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Function to download password as a text file
-  const downloadPassword = () => {
-    if (!createdCashier) return;
-    
-    const content = `Cashier Account Details
-=====================
-
-Username: ${createdCashier.username}
-Password: ${createdCashier.password}
-${createdCashier.email ? `Email: ${createdCashier.email}` : ''}
-
-Please save this information securely and change the password after first login.
-
-Generated on: ${new Date().toLocaleString()}`;
-
-    const blob = new Blob([content], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `cashier-${createdCashier.username}-credentials.txt`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
-  // Function to print password
-  const printPassword = () => {
-    if (!createdCashier) return;
-    
-    const printContent = `
-      <html>
-        <head>
-          <title>Cashier Credentials</title>
-          <style>
-            body { font-family: Arial, sans-serif; margin: 20px; }
-            .header { text-align: center; margin-bottom: 20px; }
-            .details { margin: 20px 0; }
-            .detail-item { margin: 10px 0; }
-            .password { font-weight: bold; }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <h1>Cashier Account Details</h1>
-            <p>POS System Credentials</p>
-          </div>
-          <div class="details">
-            <div class="detail-item"><strong>Username:</strong> ${createdCashier.username}</div>
-            <div class="detail-item"><strong>Password:</strong> <span class="password">${createdCashier.password}</span></div>
-            ${createdCashier.email ? `<div class="detail-item"><strong>Email:</strong> ${createdCashier.email}</div>` : ''}
-          </div>
-          <p><em>Please save this information securely and change the password after first login.</em></p>
-          <p><em>Generated on: ${new Date().toLocaleString()}</em></p>
-        </body>
-      </html>
-    `;
-    
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      printWindow.document.write(printContent);
-      printWindow.document.close();
-      printWindow.focus();
-      printWindow.print();
-    }
-  };
-
-  // Function to close the modal and reset state
-  const handleClose = () => {
-    onClose();
-    // Reset state after a short delay to allow for closing animation
-    setTimeout(() => {
-      setCreatedCashier(null);
-      setGeneratedPassword(null);
-      setError(null);
-      form.reset();
-    }, 300);
-  };
-
-  // If we have a created cashier, show the success screen with password
-  if (createdCashier) {
-    return (
-      <Modal 
-        isOpen={isOpen} 
-        onClose={handleClose} 
-        title="Cashier Created Successfully"
-        size="md"
-      >
-        <div className="space-y-6">
-          <div className="bg-green-50 border border-green-200 rounded-md p-4">
-            <div className="flex">
-              <div className="flex-shrink-0">
-                <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                </svg>
-              </div>
-              <div className="ml-3">
-                <h3 className="text-sm font-medium text-green-800">Cashier account created successfully!</h3>
-              </div>
-            </div>
-          </div>
-          
-          <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
-            <div className="flex">
-              <div className="flex-shrink-0">
-                <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                </svg>
-              </div>
-              <div className="ml-3">
-                <h3 className="text-sm font-medium text-yellow-800">Important: Save the password securely</h3>
-                <div className="mt-2 text-sm text-yellow-700">
-                  <p>This is the only time the password will be displayed. Please save it securely.</p>
-                </div>
-              </div>
-            </div>
-          </div>
-          
-          <div className="border border-gray-200 dark:border-gray-700 rounded-md p-4">
-            <div className="space-y-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Username</label>
-                <div className="mt-1 text-sm text-gray-900 dark:text-white">{createdCashier.username}</div>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Password</label>
-                <div className="mt-1 text-sm font-mono text-gray-900 dark:text-white bg-gray-50 dark:bg-gray-800 p-2 rounded">
-                  {createdCashier.password}
-                </div>
-              </div>
-              
-              {createdCashier.email && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Email</label>
-                  <div className="mt-1 text-sm text-gray-900 dark:text-white">{createdCashier.email}</div>
-                </div>
-              )}
-            </div>
-          </div>
-          
-          <div className="flex flex-col sm:flex-row gap-3">
-            <Button onClick={downloadPassword} className="flex-1">
-              Download Credentials
-            </Button>
-            <Button onClick={printPassword} variant="secondary" className="flex-1">
-              Print Credentials
-            </Button>
-          </div>
-          
-          <div className="text-center">
-            <Button onClick={handleClose} variant="outline">
-              Close
-            </Button>
-          </div>
-        </div>
-      </Modal>
-    );
-  }
-
-  return (
-    <Modal 
-      isOpen={isOpen} 
-      onClose={handleClose} 
-      title="Add New Cashier"
-      size="md"
-    >
-      <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-          {error && (
-            <div className="bg-destructive/10 border border-destructive/20 rounded-md p-3">
-              <p className="text-sm text-destructive">{error}</p>
-            </div>
-          )}
-          
-          <FormField
-            name="username"
-            render={({ field }) => (
-              <div className="space-y-2">
-                <Label htmlFor="username">Username</Label>
-                <Input 
-                  {...field} 
-                  id="username"
-                  placeholder="Enter username" 
-                />
-                <p className="text-sm text-muted-foreground">Enter a unique username for the cashier</p>
-              </div>
-            )}
-          />
-          
-          <FormField
-            name="email"
-            render={({ field }) => (
-              <div className="space-y-2">
-                <Label htmlFor="email">Email (Optional)</Label>
-                <Input 
-                  {...field} 
-                  id="email"
-                  type="email"
-                  placeholder="Enter email address" 
-                />
-                <p className="text-sm text-muted-foreground">Optional email address for the cashier</p>
-              </div>
-            )}
-          />
-          
-          <div className="flex justify-end space-x-3">
-            <Button variant="secondary" onClick={handleClose} type="button">
-              Cancel
-            </Button>
-            <Button type="submit" disabled={loading}>
-              {loading ? 'Creating...' : 'Create Cashier'}
-            </Button>
-          </div>
-        </form>
-      </Form>
-    </Modal>
-  );
-};
-
-// Function to generate a random password
-const generateRandomPassword = (length: number = 12): string => {
-  const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+-=";
-  let password = "";
-  for (let i = 0; i < length; i++) {
-    const randomIndex = Math.floor(Math.random() * charset.length);
-    password += charset[randomIndex];
-  }
-  return password;
-};

@@ -185,10 +185,10 @@ export const PrintableReceipt: React.FC<ReceiptProps> = ({
              top: 0;
              left: 0;
              width: 100% !important;
-             max-width: 100% !important; /* Allow full width since we use letter paper now */
+             max-width: 76mm !important; /* Standardize width for both POS & Dot Matrix */
              margin: 0 !important;
-             padding: 10px 0 0 10px; /* Slight padding from edge */
-             font-size: 14px; /* Slightly larger for dot matrix readability */
+             padding: 5px 0 0 5px; /* Minimal padding */
+             font-size: 13px; /* Balanced font size */
              line-height: 1.2;
              page-break-after: avoid;
              break-inside: avoid;

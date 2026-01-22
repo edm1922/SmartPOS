@@ -130,6 +130,18 @@ export default function CashierPOS() {
           }
         }
       )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'settings'
+        },
+        () => {
+          console.log('Settings changed, reloading...');
+          fetchSettings();
+        }
+      )
       .subscribe();
 
     return () => {
@@ -578,6 +590,15 @@ export default function CashierPOS() {
               <div className="text-center mb-8">
                 <div className="h-12 w-12 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4 text-primary"><Receipt className="h-6 w-6" /></div>
                 <h2 className="text-2xl font-black uppercase">{settings?.store_name || 'SMART POS'}</h2>
+                {settings?.show_address_on_receipt && settings?.store_address && (
+                  <p className="text-gray-500 text-sm mt-1">{settings.store_address}</p>
+                )}
+                {settings?.show_phone_on_receipt && settings?.store_phone && (
+                  <p className="text-gray-500 text-sm">TEL: {settings.store_phone}</p>
+                )}
+                {settings?.receipt_header && (
+                  <p className="text-gray-500 text-xs mt-2 italic whitespace-pre-wrap">{settings.receipt_header}</p>
+                )}
               </div>
               <div className="grid grid-cols-2 gap-4 border-y border-dashed border-gray-200 py-6 mb-8 text-xs">
                 <div><p className="font-black text-gray-400 uppercase">Order Ref</p><p className="font-mono font-bold">{receiptData.id.substring(0, 8).toUpperCase()}</p></div>
@@ -596,9 +617,31 @@ export default function CashierPOS() {
               </div>
               <div className="bg-gray-50 p-6 rounded-2xl mb-8 space-y-2">
                 <div className="flex justify-between items-center text-xl font-black text-gray-900">
-                  <span className="text-[10px] uppercase">Grand Total</span>
-                  <span className="text-2xl">{formatPrice(receiptData.total * (1 + (settings?.tax_rate || 0) / 100))}</span>
+                  <div className="space-y-1 mb-2">
+                    <div className="flex justify-between text-sm text-gray-500">
+                      <span>Subtotal</span>
+                      <span>{formatPrice(receiptData.total)}</span>
+                    </div>
+                    {settings?.show_tax_on_receipt && (
+                      <div className="flex justify-between text-sm text-gray-500">
+                        <span>Tax ({settings.tax_rate}%)</span>
+                        <span>{formatPrice(receiptData.total * (settings.tax_rate || 0) / 100)}</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex justify-between items-center text-xl font-black text-gray-900 pt-2 border-t border-gray-200">
+                    <span className="text-[10px] uppercase">Grand Total</span>
+                    <span className="text-2xl">{formatPrice(receiptData.total * (1 + (settings?.tax_rate || 0) / 100))}</span>
+                  </div>
                 </div>
+              </div>
+              <div className="text-center text-xs text-gray-500 mb-6 whitespace-pre-wrap">
+                {settings?.receipt_footer || (
+                  <>
+                    <p>Thank you for your purchase!</p>
+                    <p>Please come again.</p>
+                  </>
+                )}
               </div>
               <div className="flex gap-4">
                 <Button variant="ghost" className="flex-1 h-12 rounded-2xl font-bold uppercase" onClick={() => setIsReceiptModalOpen(false)}>Close</Button>

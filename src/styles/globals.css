@@ -102,3 +102,14 @@
     border-color: #4e9eff;      /* Highlight border on focus */
   }
 }
+@media print {
+  body {
+    background-color: white !important;
+    color: black !important;
+  }
+  * {
+    color: black !important;
+    text-shadow: none !important;
+    box-shadow: none !important;
+  }
+}

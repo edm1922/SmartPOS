@@ -21,6 +21,12 @@ interface ReceiptProps {
     storePhone?: string;
     taxRate?: number;
     cashierName?: string;
+    // New customization props
+    receiptHeader?: string;
+    receiptFooter?: string;
+    showTax?: boolean;
+    showAddress?: boolean;
+    showPhone?: boolean;
 }
 
 export const PrintableReceipt: React.FC<ReceiptProps> = ({
@@ -36,7 +42,12 @@ export const PrintableReceipt: React.FC<ReceiptProps> = ({
     storeName = 'SMART POS',
     storeAddress,
     storePhone,
-    cashierName
+    cashierName,
+    receiptHeader,
+    receiptFooter,
+    showTax = true,
+    showAddress = true,
+    showPhone = true
 }) => {
     // formatting helper
     const formatCurrency = (amount: number) => {
@@ -55,9 +66,16 @@ export const PrintableReceipt: React.FC<ReceiptProps> = ({
         <div className="printable-content font-mono text-xs text-black bg-white p-4 max-w-[80mm] mx-auto">
             {/* Store Header */}
             <div className="text-center mb-4">
-                <h2 className="font-bold text-lg uppercase">{storeName}</h2>
-                {storeAddress && <p>{storeAddress}</p>}
-                {storePhone && <p>Tel: {storePhone}</p>}
+                <h2 className="font-bold text-lg uppercase leading-tight mb-1">{storeName}</h2>
+                {showAddress && storeAddress && <p className="text-[10px] leading-tight mb-1">{storeAddress}</p>}
+                {showPhone && storePhone && <p className="text-[10px]">Tel: {storePhone}</p>}
+
+                {/* Custom Receipt Header Message */}
+                {receiptHeader && (
+                    <div className="mt-2 text-[10px] whitespace-pre-wrap leading-tight border-t border-dashed border-black pt-2">
+                        {receiptHeader}
+                    </div>
+                )}
             </div>
 
             {/* Transaction Details */}
@@ -103,10 +121,12 @@ export const PrintableReceipt: React.FC<ReceiptProps> = ({
                     <span>Subtotal:</span>
                     <span>{formatCurrency(subtotal)}</span>
                 </div>
-                <div className="flex justify-between">
-                    <span>Tax:</span>
-                    <span>{formatCurrency(tax)}</span>
-                </div>
+                {showTax && (
+                    <div className="flex justify-between">
+                        <span>Tax:</span>
+                        <span>{formatCurrency(tax)}</span>
+                    </div>
+                )}
                 <div className="flex justify-between font-bold text-sm border-t border-black border-dashed pt-2 mt-2">
                     <span>TOTAL:</span>
                     <span>{formatCurrency(total)}</span>
@@ -134,9 +154,16 @@ export const PrintableReceipt: React.FC<ReceiptProps> = ({
             </div>
 
             {/* Footer */}
-            <div className="text-center text-[10px]">
-                <p>Thank you for your purchase!</p>
-                <p>Software by Antigravity</p>
+            <div className="text-center text-[10px] whitespace-pre-wrap leading-tight">
+                {receiptFooter ? (
+                    <p>{receiptFooter}</p>
+                ) : (
+                    <>
+                        <p>Thank you for your purchase!</p>
+                        <p>Please come again.</p>
+                    </>
+                )}
+                <p className="mt-2 text-[8px] opacity-70">Powered by SmartPOS</p>
             </div>
 
             <style jsx>{`

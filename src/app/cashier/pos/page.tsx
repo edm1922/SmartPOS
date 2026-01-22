@@ -629,6 +629,11 @@ export default function CashierPOS() {
             storeAddress={settings?.store_address}
             storePhone={settings?.store_phone}
             cashierName={user?.cashier_username}
+            receiptHeader={settings?.receipt_header}
+            receiptFooter={settings?.receipt_footer}
+            showTax={settings?.show_tax_on_receipt}
+            showAddress={settings?.show_address_on_receipt}
+            showPhone={settings?.show_phone_on_receipt}
           />
         )}
       </div>

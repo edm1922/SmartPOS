@@ -170,20 +170,25 @@ export const PrintableReceipt: React.FC<ReceiptProps> = ({
         @media print {
           @page {
             margin: 0;
-            size: 80mm auto;
           }
-          html, body {
+          :global(html), :global(body) {
             background-color: white;
             height: auto !important;
             overflow: visible !important;
-            min-height: auto !important;
+            min-height: 0 !important; /* Reset min-height */
+            margin: 0 !important;
+            padding: 0 !important;
+            display: block !important; /* Ensure block display */
           }
           .printable-content {
-             width: 76mm !important;
-             max-width: 76mm !important;
-             margin: 0 auto;
-             padding: 4mm 0;
-             font-size: 12px;
+             position: absolute; /* Force top positioning */
+             top: 0;
+             left: 0;
+             width: 100% !important;
+             max-width: 100% !important; /* Allow full width since we use letter paper now */
+             margin: 0 !important;
+             padding: 10px 0 0 10px; /* Slight padding from edge */
+             font-size: 14px; /* Slightly larger for dot matrix readability */
              line-height: 1.2;
              page-break-after: avoid;
              break-inside: avoid;

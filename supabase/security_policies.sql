@@ -67,15 +67,13 @@ CREATE POLICY "Admins can manage products" ON products
   );
 
 -- Settings table policies
--- Only admins can view settings
+-- Allow everyone to view settings (required for POS and Receipt)
+DROP POLICY IF EXISTS "Allow public view settings" ON settings;
+CREATE POLICY "Allow public view settings" ON settings
+  FOR SELECT USING (true);
+
+-- Remove old restrictive policy
 DROP POLICY IF EXISTS "Admins can view settings" ON settings;
-CREATE POLICY "Admins can view settings" ON settings
-  FOR SELECT USING (
-    EXISTS (
-      SELECT 1 FROM public.users 
-      WHERE id = auth.uid() AND role = 'admin'
-    )
-  );
 
 -- Only admins can manage settings
 DROP POLICY IF EXISTS "Admins can manage settings" ON settings;
@@ -181,6 +179,7 @@ GRANT ALL ON TABLE transactions TO authenticated;
 GRANT ALL ON TABLE transaction_items TO authenticated;
 GRANT ALL ON TABLE activity_logs TO authenticated;
 GRANT ALL ON TABLE settings TO authenticated;  -- Grant permissions for settings table
+GRANT SELECT ON TABLE settings TO anon;      -- Allow anonymous Read for settings
 
 -- Grant usage on auth schema (needed for auth.uid() and auth.role())
 GRANT USAGE ON SCHEMA auth TO authenticated;

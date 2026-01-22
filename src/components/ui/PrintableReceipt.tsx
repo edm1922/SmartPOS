@@ -172,10 +172,15 @@ export const PrintableReceipt: React.FC<ReceiptProps> = ({
             margin: 0;
             size: auto;
           }
+          body {
+            background-color: white;
+          }
           .printable-content {
-             width: 100%;
-             max-width: none;
-             padding: 0;
+             width: 76mm !important;
+             max-width: 76mm !important;
+             margin: 0;
+             padding: 2mm 0;
+             font-size: 12px;
           }
         }
       `}</style>

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 
 interface ReceiptItem {
     name: string;
@@ -19,14 +19,14 @@ interface ReceiptProps {
     storeName?: string;
     storeAddress?: string;
     storePhone?: string;
-    taxRate?: number;
     cashierName?: string;
-    // New customization props
+    deliveredTo?: string;
+    tin?: string;
+    orNumber?: string;
     receiptHeader?: string;
     receiptFooter?: string;
-    showTax?: boolean;
-    showAddress?: boolean;
-    showPhone?: boolean;
+    taxRate?: number;
+    showSignatures?: boolean;
 }
 
 export const PrintableReceipt: React.FC<ReceiptProps> = ({
@@ -39,162 +39,165 @@ export const PrintableReceipt: React.FC<ReceiptProps> = ({
     paymentMethod,
     amountReceived,
     change,
-    storeName = 'SMART POS',
-    storeAddress,
-    storePhone,
+    storeName = 'AJ SOFTDRIVE',
+    storeAddress = 'Lapu-Lapu Street Tacurong City, Sultan Kudarat',
+    storePhone = '+63 912 345 6789',
     cashierName,
-    receiptHeader,
-    receiptFooter,
-    showTax = true,
-    showAddress = true,
-    showPhone = true
+    deliveredTo,
+    tin,
+    orNumber,
+    receiptHeader = 'welcome to AJSoftDrive',
+    receiptFooter = 'Happy to serve you',
+    taxRate = 12,
+    showSignatures = true,
 }) => {
-    // formatting helper
-    const formatCurrency = (amount: number) => {
-        return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount);
-    };
+    const formatCurrency = (amount: number) => amount.toFixed(2);
 
     const formatDate = (dateString: string) => {
         try {
-            return new Date(dateString).toLocaleString();
-        } catch (e) {
+            const date = new Date(dateString);
+            return `${date.getMonth() + 1}/${date.getDate()}/${date.getFullYear()} ${date.getHours()}:${date.getMinutes().toString().padStart(2, '0')}`;
+        } catch {
             return dateString;
         }
     };
 
-    return (
-        <div className="printable-content font-mono text-xs text-black bg-white p-4 max-w-[80mm] mx-auto">
-            {/* Store Header */}
-            <div className="text-center mb-4">
-                <h2 className="font-bold text-lg uppercase leading-tight mb-1">{storeName}</h2>
-                {showAddress && storeAddress && <p className="text-[10px] leading-tight mb-1">{storeAddress}</p>}
-                {showPhone && storePhone && <p className="text-[10px]">Tel: {storePhone}</p>}
+    // Group identical items
+    const groupedItems = useMemo(() => {
+        const grouped = new Map<string, { name: string; quantity: number; total: number; price: number }>();
+        items.forEach(item => {
+            const key = item.name.toLowerCase().trim();
+            const existing = grouped.get(key);
+            if (existing) {
+                existing.quantity += item.quantity;
+                existing.total += item.price * item.quantity;
+            } else {
+                grouped.set(key, {
+                    name: item.name,
+                    quantity: item.quantity,
+                    total: item.price * item.quantity,
+                    price: item.price
+                });
+            }
+        });
+        return Array.from(grouped.values());
+    }, [items]);
 
-                {/* Custom Receipt Header Message */}
-                {receiptHeader && (
-                    <div className="mt-2 text-[10px] whitespace-pre-wrap leading-tight border-t border-dashed border-black pt-2">
-                        {receiptHeader}
-                    </div>
-                )}
-            </div>
+    // Calculate available lines (66 total for 11" at 6 LPI)
+    const TOTAL_LINES = 66;
+    const SIGNATURE_LINES = 9;
+    const FIXED_LINES = showSignatures ? 24 : (24 - SIGNATURE_LINES);
+    const MAX_ITEMS = TOTAL_LINES - FIXED_LINES;
 
-            {/* Transaction Details */}
-            <div className="mb-4 border-b border-black pb-2 border-dashed">
-                <div className="flex justify-between">
-                    <span>Date:</span>
-                    <span>{formatDate(date)}</span>
-                </div>
-                <div className="flex justify-between">
-                    <span>Trans ID:</span>
-                    <span>{transactionId?.substring(0, 12)}...</span>
-                </div>
-                {cashierName && (
-                    <div className="flex justify-between">
-                        <span>Cashier:</span>
-                        <span>{cashierName}</span>
-                    </div>
-                )}
-            </div>
+    const visibleItems = groupedItems.slice(0, MAX_ITEMS - 2);
+    const remainingCount = groupedItems.length - visibleItems.length;
+    const remainingTotal = groupedItems.slice(MAX_ITEMS - 2).reduce((sum, item) => sum + item.total, 0);
 
-            {/* Items */}
-            <div className="mb-4 border-b border-black pb-2 border-dashed">
-                <div className="uppercase font-bold mb-2 grid grid-cols-12 gap-1 text-[10px]">
-                    <span className="col-span-6">Item</span>
-                    <span className="col-span-2 text-right">Qty</span>
-                    <span className="col-span-4 text-right">Total</span>
-                </div>
-                {items.map((item, index) => (
-                    <div key={index} className="grid grid-cols-12 gap-1 mb-1">
-                        <div className="col-span-6 overflow-hidden text-ellipsis whitespace-nowrap">
-                            {item.name}
-                            <div className="text-[10px] text-gray-500">@{formatCurrency(item.price)}</div>
-                        </div>
-                        <div className="col-span-2 text-right">{item.quantity}</div>
-                        <div className="col-span-4 text-right">{formatCurrency(item.price * item.quantity)}</div>
-                    </div>
-                ))}
-            </div>
+    // Column widths
+    const COLUMNS = { ITEM: 38, QTY: 8, PRICE: 12, TOTAL: 12 };
+    const TOTAL_WIDTH = COLUMNS.ITEM + COLUMNS.QTY + COLUMNS.PRICE + COLUMNS.TOTAL;
 
-            {/* Totals */}
-            <div className="mb-4 space-y-1">
-                <div className="flex justify-between">
-                    <span>Subtotal:</span>
-                    <span>{formatCurrency(subtotal)}</span>
-                </div>
-                {showTax && (
-                    <div className="flex justify-between">
-                        <span>Tax:</span>
-                        <span>{formatCurrency(tax)}</span>
-                    </div>
-                )}
-                <div className="flex justify-between font-bold text-sm border-t border-black border-dashed pt-2 mt-2">
-                    <span>TOTAL:</span>
-                    <span>{formatCurrency(total)}</span>
-                </div>
-            </div>
+    const padRight = (str: string, width: number) => {
+        str = String(str);
+        return str.length > width ? str.substring(0, width - 3) + '...' : str + ' '.repeat(width - str.length);
+    };
 
-            {/* Payment Info */}
-            <div className="mb-6 border-t border-black border-dashed pt-2">
-                <div className="flex justify-between">
-                    <span className="uppercase">{paymentMethod}:</span>
-                    <span>{formatCurrency(total)}</span>
-                </div>
-                {amountReceived !== undefined && (
-                    <>
-                        <div className="flex justify-between text-xs mt-1">
-                            <span>Tendered:</span>
-                            <span>{formatCurrency(amountReceived)}</span>
-                        </div>
-                        <div className="flex justify-between text-xs">
-                            <span>Change:</span>
-                            <span>{formatCurrency(change || 0)}</span>
-                        </div>
-                    </>
-                )}
-            </div>
+    const padLeft = (str: string, width: number) => {
+        str = String(str);
+        return str.length > width ? str.substring(0, width) : ' '.repeat(width - str.length) + str;
+    };
 
-            {/* Footer */}
-            <div className="text-center text-[10px] whitespace-pre-wrap leading-tight">
-                {receiptFooter ? (
-                    <p>{receiptFooter}</p>
-                ) : (
-                    <>
-                        <p>Thank you for your purchase!</p>
-                        <p>Please come again.</p>
-                    </>
-                )}
-                <p className="mt-2 text-[8px] opacity-70">Powered by SmartPOS</p>
-            </div>
+    const buildReceipt = () => {
+        const lines: string[] = [];
 
-            <style jsx>{`
-        @media print {
-          @page {
-            margin: 0;
-          }
-          :global(html), :global(body) {
-            background-color: white;
-            height: auto !important;
-            overflow: visible !important;
-            min-height: 0 !important; /* Reset min-height */
-            margin: 0 !important;
-            padding: 0 !important;
-            display: block !important; /* Ensure block display */
-          }
-          .printable-content {
-             position: absolute; /* Force top positioning */
-             top: 0;
-             left: 0;
-             width: 100% !important;
-             max-width: 76mm !important; /* Standardize width for both POS & Dot Matrix */
-             margin: 0 !important;
-             padding: 5px 0 0 5px; /* Minimal padding */
-             font-size: 13px; /* Balanced font size */
-             line-height: 1.2;
-             page-break-after: avoid;
-             break-inside: avoid;
-          }
+        // Header
+        lines.push(storeName);
+        lines.push(storeAddress);
+        lines.push(`Tel: ${storePhone}`);
+        lines.push(receiptHeader);
+
+        // Transaction info - compressed
+        lines.push(`INV:${transactionId.substring(0, 8)} DATE:${formatDate(date)}`);
+        lines.push(`CSR:${cashierName || 'SYSTEM'} CUST:${deliveredTo || 'WALK-IN'}${tin ? ` TIN:${tin}` : ''}${orNumber ? ` OR:${orNumber}` : ''}`);
+
+        // Items header
+        lines.push(padRight('ITEM', COLUMNS.ITEM) + padLeft('QTY', COLUMNS.QTY) + padLeft('PRICE', COLUMNS.PRICE) + padLeft('TOTAL', COLUMNS.TOTAL));
+
+        // Items
+        visibleItems.forEach(item => {
+            lines.push(
+                padRight(item.name.substring(0, COLUMNS.ITEM), COLUMNS.ITEM) +
+                padLeft(item.quantity.toString(), COLUMNS.QTY) +
+                padLeft(formatCurrency(item.price), COLUMNS.PRICE) +
+                padLeft(formatCurrency(item.total), COLUMNS.TOTAL)
+            );
+        });
+
+        // Summary if needed
+        if (remainingCount > 0) {
+            lines.push(padRight(`+${remainingCount} items`, COLUMNS.ITEM + COLUMNS.QTY + COLUMNS.PRICE) + padLeft(formatCurrency(remainingTotal), COLUMNS.TOTAL));
         }
-      `}</style>
+
+        // VAT Calculation based on formula:
+        // VAT Amount = Net Price (subtotal) × (VAT Rate ÷ 100)
+        // Final Price (Gross) = Net Price + VAT Amount
+        const vatAmount = subtotal * (taxRate / 100);
+        const finalPrice = subtotal + vatAmount;
+
+        // Totals
+        lines.push(' '.repeat(TOTAL_WIDTH - 20) + `SUBTOTAL ${formatCurrency(subtotal)}`);
+        lines.push(' '.repeat(TOTAL_WIDTH - 20) + `VAT (${taxRate}%) ${formatCurrency(vatAmount)}`);
+        lines.push(' '.repeat(TOTAL_WIDTH - 15) + `TOTAL ${formatCurrency(finalPrice)}`);
+
+        // Payment
+        lines.push(`PMT:${paymentMethod.toUpperCase()} ${amountReceived ? `CASH:${formatCurrency(amountReceived)}` : ''} ${change ? `CHG:${formatCurrency(change)}` : ''}`);
+
+        // Footer
+        lines.push(receiptFooter);
+
+        if (showSignatures) {
+            // Add empty line before signatures
+            lines.push('');
+
+            // Signature lines
+            const signatureWidth = 35;
+            const signatureLine = '_'.repeat(signatureWidth);
+
+            // Cashier signature
+            lines.push('Cashier Signature:');
+            lines.push(signatureLine);
+            lines.push(cashierName ? `Printed Name: ${cashierName}` : '');
+
+            // Add space between signatures
+            lines.push('');
+
+            // Customer signature
+            lines.push('Customer Signature:');
+            lines.push(signatureLine);
+            lines.push(deliveredTo ? `Printed Name: ${deliveredTo}` : '');
+
+            // Add small space before powered by
+            lines.push('');
+        }
+        lines.push('Powered by SmartPOS');
+
+        return lines.join('\n');
+    };
+
+    return (
+        <div style={{
+            width: '9.5in',
+            height: '11in',
+            margin: 0,
+            padding: '0.2in',
+            background: 'white',
+            fontFamily: 'Courier New, monospace',
+            fontSize: '12pt',
+            lineHeight: '1.2',
+            whiteSpace: 'pre',
+            overflow: 'hidden'
+        }}>
+            <pre style={{ margin: 0, fontFamily: 'inherit', fontSize: 'inherit' }}>{buildReceipt()}</pre>
         </div>
     );
 };

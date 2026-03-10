@@ -17,6 +17,9 @@ interface ReceiptProps {
   paymentMethod: string;
   amountReceived?: number;
   change?: number;
+  deliveredTo?: string;
+  tin?: string;
+  orNumber?: string;
   onPrint: () => void;
   onClose: () => void;
 }
@@ -31,6 +34,9 @@ export const Receipt: React.FC<ReceiptProps> = ({
   paymentMethod,
   amountReceived,
   change,
+  deliveredTo,
+  tin,
+  orNumber,
   onPrint,
   onClose
 }) => {
@@ -42,7 +48,7 @@ export const Receipt: React.FC<ReceiptProps> = ({
         <p className="text-gray-600 text-sm">123 Main Street, City, State 12345</p>
         <p className="text-gray-600 text-sm">Phone: (555) 123-4567</p>
       </div>
-      
+
       {/* Transaction Info */}
       <div className="border-b border-gray-200 pb-4 mb-4">
         <div className="flex justify-between mb-1">
@@ -53,24 +59,54 @@ export const Receipt: React.FC<ReceiptProps> = ({
           <span className="text-gray-600 text-sm">Date:</span>
           <span className="text-sm">{date}</span>
         </div>
+        {deliveredTo && (
+          <div className="flex justify-between mt-1">
+            <span className="text-gray-600 text-sm">Delivered To:</span>
+            <span className="text-sm">{deliveredTo}</span>
+          </div>
+        )}
+        {tin && (
+          <div className="flex justify-between mt-1">
+            <span className="text-gray-600 text-sm">TIN:</span>
+            <span className="text-sm font-mono">{tin}</span>
+          </div>
+        )}
+        {orNumber && (
+          <div className="flex justify-between mt-1">
+            <span className="text-red-500 text-sm font-bold">OR No:</span>
+            <span className="text-sm font-mono font-bold text-red-600">{orNumber}</span>
+          </div>
+        )}
       </div>
-      
+
       {/* Items */}
       <div className="mb-4">
-        <h3 className="font-medium text-gray-900 mb-2">Items:</h3>
-        <div className="space-y-2">
-          {items.map((item, index) => (
-            <div key={index} className="flex justify-between text-sm">
-              <div className="flex-1">
-                <span className="font-medium">{item.name}</span>
-                <span className="text-gray-600"> x{item.quantity}</span>
-              </div>
-              <span className="text-gray-900">${(item.price * item.quantity).toFixed(2)}</span>
-            </div>
-          ))}
+        {/* Items Table */}
+        <div className="mb-4">
+          <table className="w-full border-collapse border border-gray-100 text-xs">
+            <thead>
+              <tr className="bg-gray-50 uppercase text-[9px] font-black text-gray-400">
+                <th className="border border-gray-100 px-2 py-1 text-center">Qty</th>
+                <th className="border border-gray-100 px-2 py-1 text-left">Description</th>
+                <th className="border border-gray-100 px-2 py-1 text-right">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((item, index) => (
+                <tr key={index}>
+                  <td className="border border-gray-100 px-2 py-1 text-center font-bold">{item.quantity}</td>
+                  <td className="border border-gray-100 px-2 py-1">
+                    <p className="font-bold text-gray-800 uppercase text-[10px]">{item.name}</p>
+                    <p className="text-[9px] text-gray-400 font-bold">@{item.price.toFixed(2)}</p>
+                  </td>
+                  <td className="border border-gray-100 px-2 py-1 text-right font-black">{(item.price * item.quantity).toFixed(2)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
-      
+
       {/* Totals */}
       <div className="border-t border-gray-200 pt-4 mb-6">
         <div className="flex justify-between mb-1">
@@ -78,7 +114,7 @@ export const Receipt: React.FC<ReceiptProps> = ({
           <span>${subtotal.toFixed(2)}</span>
         </div>
         <div className="flex justify-between mb-1">
-          <span className="text-gray-600">Tax:</span>
+          <span className="text-gray-600">VAT:</span>
           <span>${tax.toFixed(2)}</span>
         </div>
         <div className="flex justify-between font-bold text-lg my-2">
@@ -102,13 +138,23 @@ export const Receipt: React.FC<ReceiptProps> = ({
           </>
         )}
       </div>
-      
+
+      {/* Signature Area */}
+      <div className="grid grid-cols-2 gap-4 mb-8 mt-12 px-4">
+        <div className="text-center pt-4 border-t border-gray-300">
+          <p className="text-[10px] uppercase font-bold text-gray-400">Cashier</p>
+        </div>
+        <div className="text-center pt-4 border-t border-gray-300">
+          <p className="text-[10px] uppercase font-bold text-gray-400">Customer</p>
+        </div>
+      </div>
+
       {/* Footer */}
       <div className="text-center text-sm text-gray-600 mb-6">
         <p>Thank you for your purchase!</p>
         <p>Please come again.</p>
       </div>
-      
+
       {/* Actions */}
       <div className="flex justify-center space-x-3">
         <Button variant="secondary" onClick={onClose}>

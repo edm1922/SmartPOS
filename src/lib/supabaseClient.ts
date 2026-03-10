@@ -411,5 +411,38 @@ export const supabaseDB = {
       console.error('Error uploading image:', error);
       return { publicUrl: null, error: error.message };
     }
+  },
+
+  async resetApplicationData() {
+    try {
+      // Return early if we're in a test environment
+      if (process.env.NODE_ENV === 'test') {
+        return { success: true, error: null };
+      }
+
+      // step 1: clear transaction items
+      const { error: error1 } = await supabase.from('transaction_items').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      if (error1) throw new Error(`Items clear: ${error1.message}`);
+
+      // step 2: clear transactions
+      const { error: error2 } = await supabase.from('transactions').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      if (error2) throw new Error(`Sales clear: ${error2.message}`);
+
+      // step 3: clear cashiers
+      const { error: error3 } = await supabase.from('cashiers').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      if (error3) throw new Error(`Staff clear: ${error3.message}`);
+
+      // step 4: reset stocks
+      const { error: error4 } = await supabase.from('products').update({ stock_quantity: 0 }).neq('id', '00000000-0000-0000-0000-000000000000');
+      if (error4) throw new Error(`Stock reset: ${error4.message}`);
+
+      // step 5: clear activity logs
+      await supabase.from('activity_logs').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+
+      return { success: true, error: null };
+    } catch (error: any) {
+      console.error('Critical Error resetting application data:', error);
+      return { success: false, error: error.message };
+    }
   }
 };

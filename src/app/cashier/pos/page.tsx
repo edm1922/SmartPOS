@@ -35,7 +35,9 @@ import {
   Receipt,
   CreditCard,
   Wallet,
-  Monitor
+  Monitor,
+  Landmark,
+  Check
 } from 'lucide-react';
 import { PrintableReceipt } from '@/components/ui/PrintableReceipt';
 
@@ -62,7 +64,7 @@ export default function CashierPOS() {
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isCartOpen, setIsCartOpen] = useState(false); // For mobile cart drawer
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'mobile'>('cash');
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'mobile' | 'cheque'>('cash');
   const [amountReceived, setAmountReceived] = useState('');
   const [transactionComplete, setTransactionComplete] = useState(false);
   const [receiptData, setReceiptData] = useState<any>(null);
@@ -70,6 +72,10 @@ export default function CashierPOS() {
   const [error, setError] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null); // For success notifications
+  const [deliveredTo, setDeliveredTo] = useState('');
+  const [tin, setTin] = useState('');
+  const [orNumber, setOrNumber] = useState('');
+  const [showSignatures, setShowSignatures] = useState(true);
   const barcodeInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -407,7 +413,7 @@ export default function CashierPOS() {
 
   return (
     <>
-      <div className="h-screen bg-gray-50 dark:bg-gray-950 flex flex-col overflow-hidden print:hidden">
+      <div className="h-screen bg-background flex flex-col overflow-hidden print:hidden">
         <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[100] flex flex-col gap-2 w-full max-w-sm px-4">
           {error && (
             <div className="bg-red-600 text-white px-4 py-3 rounded-xl shadow-2xl flex items-center justify-between animate-in slide-in-from-top duration-300">
@@ -426,7 +432,7 @@ export default function CashierPOS() {
           )}
         </div>
 
-        <header className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 h-16 flex items-center justify-between px-6 shrink-0 relative z-10">
+        <header className="bg-card border-b border-border h-16 flex items-center justify-between px-6 shrink-0 relative z-10">
           <div className="flex items-center gap-4">
             <div className="h-10 w-10 bg-primary rounded-xl flex items-center justify-center text-white shadow-lg shadow-primary/20">
               <Monitor className="h-6 w-6" />
@@ -442,15 +448,15 @@ export default function CashierPOS() {
 
           <div className="flex items-center gap-2">
             <ThemeToggle />
-            <div className="h-8 w-px bg-gray-200 dark:bg-gray-800 mx-2" />
+            <div className="h-8 w-px bg-border mx-2" />
             <Button onClick={() => setIsSettingsModalOpen(true)} variant="ghost" size="sm" className="font-bold text-xs"><Settings className="h-4 w-4" /></Button>
             <Button onClick={handleSignOut} variant="destructive" size="sm" className="font-bold text-xs flex items-center gap-2"><LogOut className="h-4 w-4" /> LOCK</Button>
           </div>
         </header>
 
         <main className="flex-1 flex overflow-hidden">
-          <section className="flex-1 flex flex-col bg-gray-50 dark:bg-gray-950">
-            <div className="p-4 border-b border-gray-200 dark:border-gray-800 bg-white/50 dark:bg-gray-900/50 backdrop-blur-sm space-y-4">
+          <section className="flex-1 flex flex-col bg-background">
+            <div className="p-4 border-b border-border bg-card/50 backdrop-blur-sm space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="relative group">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -473,7 +479,7 @@ export default function CashierPOS() {
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
                 {filteredProducts.map((product) => (
                   <div key={product.id} className="group relative" onClick={() => addToCart(product)}>
-                    <Card className={`h-full flex flex-col cursor-pointer transition-all border-gray-200 dark:border-gray-800 overflow-hidden ${product.stock_quantity <= 0 ? 'opacity-60 grayscale' : ''}`}>
+                    <Card className={`h-full flex flex-col cursor-pointer transition-all border-border overflow-hidden ${product.stock_quantity <= 0 ? 'opacity-60 grayscale' : ''}`}>
                       <div className="aspect-square bg-gray-100 dark:bg-gray-800 flex items-center justify-center relative overflow-hidden">
                         {product.image_url ? (
                           <img src={product.image_url} alt={product.name} className="h-full w-full object-cover transition-transform group-hover:scale-110 duration-500" />
@@ -499,8 +505,8 @@ export default function CashierPOS() {
             </div>
           </section>
 
-          <aside className="w-[400px] bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-800 flex flex-col shadow-2xl relative z-10">
-            <div className="p-6 border-b border-gray-200 dark:border-gray-800 shrink-0">
+          <aside className="w-[400px] bg-card border-l border-border flex flex-col shadow-2xl relative z-10">
+            <div className="p-6 border-b border-border shrink-0">
               <div className="flex items-center justify-between">
                 <h2 className="text-xl font-black uppercase dark:text-white flex items-center gap-2"><ShoppingCart className="h-5 w-5 text-primary" /> Checkout</h2>
                 <Badge variant="outline">{cart.length} Items</Badge>
@@ -522,7 +528,7 @@ export default function CashierPOS() {
                       </div>
                       <button onClick={() => removeFromCart(item.id)} className="text-gray-400 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
                     </div>
-                    <div className="flex items-center justify-between bg-white dark:bg-gray-900 rounded-xl p-1 shadow-sm">
+                    <div className="flex items-center justify-between bg-background rounded-xl p-1 shadow-sm">
                       <div className="flex items-center gap-1">
                         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => updateQuantity(item.id, item.quantity - 1)}><Minus className="h-3 w-3" /></Button>
                         <span className="w-8 text-center text-xs font-black">{item.quantity}</span>
@@ -534,10 +540,10 @@ export default function CashierPOS() {
                 ))
               )}
             </div>
-            <div className="p-6 bg-gray-50 dark:bg-gray-950 border-t border-gray-200 dark:border-gray-800 shrink-0 space-y-4">
+            <div className="p-6 bg-muted/30 border-t border-border shrink-0 space-y-4">
               <div className="space-y-1">
                 <div className="flex justify-between text-xs font-bold text-muted-foreground uppercase"><span>Subtotal</span><span>{formatPrice(calculateTotal())}</span></div>
-                <div className="flex justify-between text-xs font-bold text-muted-foreground uppercase"><span>Tax</span><span>{formatPrice(calculateTotal() * (settings?.tax_rate || 0) / 100)}</span></div>
+                <div className="flex justify-between text-xs font-bold text-muted-foreground uppercase"><span>VAT</span><span>{formatPrice(calculateTotal() * (settings?.tax_rate || 0) / 100)}</span></div>
                 <div className="pt-2 border-t border-gray-200 dark:border-gray-800 flex justify-between items-center text-2xl font-black dark:text-white">
                   <span className="text-sm uppercase">Total</span>
                   <span className="text-primary">{formatPrice(calculateTotal() * (1 + (settings?.tax_rate || 0) / 100))}</span>
@@ -554,19 +560,20 @@ export default function CashierPOS() {
         <Modal isOpen={isPaymentModalOpen} onClose={() => setIsPaymentModalOpen(false)} title="Processing Order" size="md">
           <div className="space-y-8 p-2">
             <div className="text-center">
-              <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-1">Total Due</p>
+              <p className="text-xs font-bold text-gray-600 dark:text-gray-400 uppercase tracking-widest mb-1">Total Due</p>
               <h2 className="text-5xl font-black text-primary">{formatPrice(calculateTotal() * (1 + (settings?.tax_rate || 0) / 100))}</h2>
             </div>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-4 gap-4">
               <PaymentTab active={paymentMethod === 'cash'} onClick={() => setPaymentMethod('cash')} icon={<Wallet className="h-5 w-5" />} label="Cash" />
               <PaymentTab active={paymentMethod === 'card'} onClick={() => setPaymentMethod('card')} icon={<CreditCard className="h-5 w-5" />} label="Card" />
               <PaymentTab active={paymentMethod === 'mobile'} onClick={() => setPaymentMethod('mobile')} icon={<Monitor className="h-5 w-5" />} label="Mobile" />
+              <PaymentTab active={paymentMethod === 'cheque'} onClick={() => setPaymentMethod('cheque')} icon={<Landmark className="h-5 w-5" />} label="Cheque" />
             </div>
             {paymentMethod === 'cash' && (
-              <div className="bg-gray-50 dark:bg-gray-900 p-6 rounded-3xl border border-gray-200 dark:border-gray-800">
-                <label className="block text-xs font-black uppercase text-muted-foreground mb-3 text-center">Amount Tendered</label>
+              <div className="bg-muted/50 p-6 rounded-3xl border border-border">
+                <label className="block text-xs font-black uppercase text-gray-600 dark:text-gray-400 mb-3 text-center">Amount Tendered</label>
                 <div className="relative">
-                  <Input type="number" className="h-20 text-center text-4xl font-black bg-white dark:bg-gray-950 rounded-2xl" placeholder="0.00" value={amountReceived} onChange={(e) => setAmountReceived(e.target.value)} autoFocus />
+                  <Input type="number" className="h-20 text-center text-4xl font-black bg-card rounded-2xl" placeholder="0.00" value={amountReceived} onChange={(e) => setAmountReceived(e.target.value)} autoFocus />
                   <div className="absolute left-6 top-1/2 -translate-y-1/2 text-2xl font-black text-gray-300">₱</div>
                 </div>
                 {parseFloat(amountReceived) >= (calculateTotal() * (1 + (settings?.tax_rate || 0) / 100)) && (
@@ -604,16 +611,87 @@ export default function CashierPOS() {
                 <div><p className="font-black text-gray-400 uppercase">Order Ref</p><p className="font-mono font-bold">{receiptData.id.substring(0, 8).toUpperCase()}</p></div>
                 <div className="text-right"><p className="font-black text-gray-400 uppercase">Method</p><Badge className="text-[8px] font-black uppercase h-4 px-1.5">{receiptData.paymentMethod}</Badge></div>
               </div>
-              <div className="space-y-4 mb-8">
-                <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest border-b border-gray-50 pb-2">Line Items</h3>
-                <div className="space-y-2">
-                  {receiptData.items.map((item: any, idx: number) => (
-                    <div key={idx} className="flex justify-between items-start text-sm">
-                      <div className="flex-1"><p className="font-bold text-gray-800">{item.name}</p><p className="text-[10px] text-gray-500 font-bold">{item.quantity} x {formatPrice(item.price)}</p></div>
-                      <p className="font-black text-gray-900">{formatPrice(item.price * item.quantity)}</p>
-                    </div>
-                  ))}
+
+              {/* Editable Fields for Receipt */}
+              <div className="grid grid-cols-3 gap-2 mb-8">
+                <div>
+                  <label className="block text-[10px] font-black text-gray-400 uppercase mb-1">Delivered To</label>
+                  <Input
+                    placeholder="Buyer..."
+                    value={deliveredTo}
+                    onChange={(e) => setDeliveredTo(e.target.value)}
+                    className="h-8 text-xs font-bold"
+                  />
                 </div>
+                <div>
+                  <label className="block text-[10px] font-black text-gray-400 uppercase mb-1">TIN</label>
+                  <Input
+                    placeholder="TIN..."
+                    value={tin}
+                    onChange={(e) => setTin(e.target.value)}
+                    className="h-8 text-xs font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-gray-400 uppercase mb-1">OR No.</label>
+                  <Input
+                    placeholder="Serial #"
+                    value={orNumber}
+                    onChange={(e) => setOrNumber(e.target.value)}
+                    className="h-8 text-xs font-bold border-red-200 focus:border-red-500 text-red-600"
+                  />
+                </div>
+              </div>
+
+              {/* Signature Toggle - Modern Minimal */}
+              <div className="bg-card p-5 rounded-2xl mb-8 border border-border shadow-lg">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2.5 rounded-xl transition-all ${showSignatures ? 'bg-primary/10 text-primary' : 'bg-gray-100 dark:bg-gray-700 text-gray-400'}`}>
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-gray-900 dark:text-white">Include Signatures</p>
+                      <p className="text-xs text-gray-600 dark:text-gray-400">Cashier & Customer signature lines</p>
+                    </div>
+                  </div>
+
+                  <label className="relative inline-flex cursor-pointer items-center">
+                    <input
+                      type="checkbox"
+                      className="peer sr-only"
+                      checked={showSignatures}
+                      onChange={() => setShowSignatures(!showSignatures)}
+                    />
+                    <div className="peer h-7 w-12 rounded-full border bg-gray-200 after:absolute after:left-0.5 after:top-0.5 after:h-6 after:w-6 after:rounded-full after:border after:border-gray-300 after:bg-white after:transition-all after:content-[''] peer-checked:bg-primary peer-checked:after:translate-x-5 peer-checked:after:border-white peer-focus:ring-2 peer-focus:ring-primary/50 peer-focus:ring-offset-2 dark:border-gray-600 dark:bg-gray-700 dark:after:bg-gray-400"></div>
+                  </label>
+                </div>
+              </div>
+
+              <div className="mb-8">
+                <table className="w-full border-collapse border border-gray-200 text-xs">
+                  <thead>
+                    <tr className="bg-gray-50 uppercase text-[9px] font-black text-gray-400">
+                      <th className="border border-gray-200 px-2 py-1 text-center">Qty</th>
+                      <th className="border border-gray-200 px-2 py-1 text-left">Description</th>
+                      <th className="border border-gray-200 px-2 py-1 text-right">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {receiptData.items.map((item: any, idx: number) => (
+                      <tr key={idx}>
+                        <td className="border border-gray-200 px-2 py-1 text-center font-bold">{item.quantity}</td>
+                        <td className="border border-gray-200 px-2 py-1">
+                          <p className="font-bold text-gray-800 uppercase text-[10px]">{item.name}</p>
+                          <p className="text-[9px] text-gray-400 font-bold">@{formatPrice(item.price)}</p>
+                        </td>
+                        <td className="border border-gray-200 px-2 py-1 text-right font-black">{formatPrice(item.price * item.quantity)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
               <div className="bg-gray-50 p-6 rounded-2xl mb-8 space-y-2">
                 <div className="flex justify-between items-center text-xl font-black text-gray-900">
@@ -624,7 +702,7 @@ export default function CashierPOS() {
                     </div>
                     {settings?.show_tax_on_receipt && (
                       <div className="flex justify-between text-sm text-gray-500">
-                        <span>Tax ({settings.tax_rate}%)</span>
+                        <span>VAT ({settings.tax_rate}%)</span>
                         <span>{formatPrice(receiptData.total * (settings.tax_rate || 0) / 100)}</span>
                       </div>
                     )}
@@ -672,11 +750,13 @@ export default function CashierPOS() {
             storeAddress={settings?.store_address}
             storePhone={settings?.store_phone}
             cashierName={user?.cashier_username}
+            deliveredTo={deliveredTo}
+            tin={tin}
+            orNumber={orNumber}
             receiptHeader={settings?.receipt_header}
             receiptFooter={settings?.receipt_footer}
-            showTax={settings?.show_tax_on_receipt}
-            showAddress={settings?.show_address_on_receipt}
-            showPhone={settings?.show_phone_on_receipt}
+            taxRate={settings?.tax_rate}
+            showSignatures={showSignatures}
           />
         )}
       </div>
@@ -686,9 +766,9 @@ export default function CashierPOS() {
 
 function PaymentTab({ active, onClick, icon, label }: any) {
   return (
-    <button onClick={onClick} className={`flex flex-col items-center justify-center h-24 rounded-3xl border-2 transition-all gap-2 ${active ? 'bg-primary border-primary text-white shadow-xl' : 'bg-white dark:bg-gray-900 border-gray-100 text-gray-400'}`}>
-      {icon}
-      <span className="text-[10px] font-black uppercase tracking-widest">{label}</span>
+    <button onClick={onClick} className={`flex flex-col items-center justify-center h-24 rounded-3xl border-2 transition-all gap-2 ${active ? 'bg-primary border-primary text-primary-foreground shadow-xl' : 'bg-card border-border text-muted-foreground hover:border-primary/50'}`}>
+      <span className={active ? 'text-primary-foreground' : 'text-muted-foreground'}>{icon}</span>
+      <span className={`text-[10px] font-black uppercase tracking-widest ${active ? 'text-primary-foreground' : 'text-foreground'}`}>{label}</span>
     </button>
   );
 }

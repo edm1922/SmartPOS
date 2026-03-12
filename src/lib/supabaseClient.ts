@@ -134,6 +134,7 @@ export const supabaseDB = {
       const { data, error } = await supabase
         .from('products')
         .select('*')
+        .is('deleted_at', null)
         .order('created_at', { ascending: false });
 
       const errorMessage = handleSupabaseError(error, 'fetch products');
@@ -154,19 +155,21 @@ export const supabaseDB = {
         return { data: {}, error: null };
       }
 
-      console.log('Attempting to delete product with ID:', productId);
+      console.log('Attempting to soft delete product with ID:', productId);
 
+      // We use soft delete (setting deleted_at) instead of hard delete
+      // This preserves historical transaction data that references the product
+      // We also clear the barcode to allow it to be reused for new products
       const { data, error } = await supabase
         .from('products')
-        .delete()
-        .eq('id', productId);
+        .update({ 
+          deleted_at: new Date().toISOString(),
+          barcode: null 
+        })
+        .eq('id', productId)
+        .select();
 
-      console.log('Delete operation result:', { data, error });
-
-      // Check if any rows were affected
-      if (data && (data as any[]).length === 0) {
-        console.warn('No rows were deleted. This might indicate a permission issue or that the product does not exist.');
-      }
+      console.log('Soft delete operation result:', { data, error });
 
       const errorMessage = handleSupabaseError(error, 'delete product');
       if (errorMessage) {

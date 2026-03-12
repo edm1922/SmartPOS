@@ -113,7 +113,7 @@ export default function ProductManagement() {
       }
       setProducts(products.filter(p => p.id !== productId));
     } catch (error: any) {
-      setError('Failed to delete product.');
+      setError(error.message || 'Failed to delete product.');
     }
   };
 

@@ -61,15 +61,13 @@ export const LoginForm: React.FC<LoginFormProps> = ({
             </svg>
           </div>
         </div>
-        <div className="flex justify-between items-center mt-6">
-          <div>
-            <h2 className="text-center text-3xl font-extrabold text-gray-900 dark:text-white">
-              {title}
-            </h2>
-            <p className="mt-2 text-center text-sm text-gray-600 dark:text-gray-300">
-              {subtitle}
-            </p>
-          </div>
+        <div className="mt-6 text-center">
+          <h2 className="text-3xl font-extrabold text-gray-900 dark:text-white">
+            {title}
+          </h2>
+          <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+            {subtitle}
+          </p>
           <div className="absolute top-4 right-4">
             <ThemeToggle />
           </div>

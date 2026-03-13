@@ -126,11 +126,21 @@ export default function CashierPOS() {
         (payload) => {
           console.log('Product change detected:', payload);
           if (payload.eventType === 'UPDATE') {
-            setProducts((currentProducts) =>
-              currentProducts.map((p) =>
-                p.id === (payload.new as Product).id ? (payload.new as Product) : p
-              )
-            );
+            const updatedProduct = payload.new as Product & { deleted_at?: string | null };
+            
+            // If the product was soft-deleted, remove it from the list
+            if (updatedProduct.deleted_at) {
+              setProducts((currentProducts) => 
+                currentProducts.filter((p) => p.id !== updatedProduct.id)
+              );
+            } else {
+              // Otherwise update it in the list
+              setProducts((currentProducts) =>
+                currentProducts.map((p) =>
+                  p.id === updatedProduct.id ? (updatedProduct as Product) : p
+                )
+              );
+            }
           } else {
             fetchProducts();
           }
@@ -157,14 +167,10 @@ export default function CashierPOS() {
 
   const fetchProducts = async () => {
     try {
-      const { data, error } = await supabase
-        .from('products')
-        .select('*')
-        .order('name');
+      const { data, error } = await supabaseDB.getProducts();
 
       if (error) {
-        console.error('Error fetching products:', error);
-        throw error;
+        throw new Error(error);
       }
 
       setProducts(data || []);

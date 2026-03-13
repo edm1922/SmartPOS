@@ -72,6 +72,7 @@ export default function CashierPOS() {
   const [error, setError] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null); // For success notifications
+  const [barcodeValue, setBarcodeValue] = useState('');
   const [deliveredTo, setDeliveredTo] = useState('');
   const [tin, setTin] = useState('');
   const [orNumber, setOrNumber] = useState('');
@@ -190,17 +191,83 @@ export default function CashierPOS() {
     }
   };
 
-  // Handle keyboard shortcuts
-  const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    if (barcodeInputRef.current && document.activeElement !== barcodeInputRef.current) {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
-        return;
+  const handleSignOut = useCallback(async () => {
+    try {
+      const { error } = await supabaseAuth.signOut();
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('cashier_session');
+        sessionStorage.removeItem('cashier_id');
+        sessionStorage.removeItem('cashier_username');
+        // Clear cookie if used
+        document.cookie = 'cashier_session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
       }
-      if (e.key !== 'Escape') {
-        barcodeInputRef.current.focus();
+      
+      if (error) {
+        console.error('Sign out error:', error);
+        setError(error);
       }
+      
+      router.push('/auth/cashier/login');
+    } catch (err: any) {
+      console.error('Unexpected sign out error:', err);
+      router.push('/auth/cashier/login');
+    }
+  }, [router]);
+
+  const addToCart = useCallback((product: Product) => {
+    if (product.stock_quantity <= 0) {
+      setError('Product is out of stock');
+      return;
     }
 
+    setCart(prevCart => {
+      const existingItem = prevCart.find(item => item.id === product.id);
+      if (existingItem) {
+        if (existingItem.quantity >= product.stock_quantity) {
+          setError('Not enough stock available');
+          return prevCart;
+        }
+        setSuccessMessage(`Added another ${product.name} to cart`);
+        return prevCart.map(item =>
+          item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
+        );
+      } else {
+        setSuccessMessage(`Added ${product.name} to cart`);
+        return [...prevCart, { ...product, quantity: 1 }];
+      }
+    });
+    
+    setTimeout(() => setSuccessMessage(null), 2000);
+  }, []);
+
+  const handleBarcodeSubmit = useCallback((barcode: string, source: 'barcode' | 'search' = 'barcode') => {
+    const trimmedBarcode = barcode.trim();
+    if (!trimmedBarcode) return;
+
+    console.log(`[POS] Processing barcode: "${trimmedBarcode}" from source: ${source}`);
+
+    const product = products.find(p => p.barcode === trimmedBarcode);
+    if (product) {
+      console.log(`[POS] Product found: ${product.name}`);
+      addToCart(product);
+      setSearchTerm(product.name);
+      setBarcodeValue(trimmedBarcode);
+      // Ensure barcode input is focused and selected for next scan
+      setTimeout(() => {
+        barcodeInputRef.current?.focus();
+        barcodeInputRef.current?.select();
+      }, 50);
+    } else {
+      console.log(`[POS] Product not found for barcode: ${trimmedBarcode}`);
+      if (source === 'barcode') {
+        setError(`Product not found for barcode: ${trimmedBarcode}`);
+        setBarcodeValue('');
+      }
+    }
+  }, [products, addToCart]);
+
+  // Handle keyboard shortcuts
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if (e.ctrlKey || e.metaKey) {
       switch (e.key) {
         case 'p':
@@ -231,50 +298,55 @@ export default function CashierPOS() {
       setIsReceiptModalOpen(false);
       setIsSettingsModalOpen(false);
     }
-  }, [cart, products, isPaymentModalOpen, isReceiptModalOpen, isSettingsModalOpen]);
+  }, [cart, products, isPaymentModalOpen, isReceiptModalOpen, isSettingsModalOpen, handleSignOut]);
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleKeyDown]);
 
-  const handleSignOut = async () => {
-    const { error } = await supabaseAuth.signOut();
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('cashier_session');
-      sessionStorage.removeItem('cashier_id');
-      sessionStorage.removeItem('cashier_username');
-      document.cookie = 'cashier_session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
-    }
-    if (error) {
-      setError(error);
-      return;
-    }
-    router.push('/');
-  };
+  // Global barcode scanner wedge - captures scans even when no input is focused
+  useEffect(() => {
+    let buffer = '';
+    let lastKeyTime = Date.now();
 
-  const addToCart = (product: Product) => {
-    if (product.stock_quantity <= 0) {
-      setError('Product is out of stock');
-      return;
-    }
-
-    const existingItem = cart.find(item => item.id === product.id);
-    if (existingItem) {
-      if (existingItem.quantity >= product.stock_quantity) {
-        setError('Not enough stock available');
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      // Don't intercept if user is already typing in an input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        // Clear buffer just in case
+        buffer = '';
         return;
       }
-      setCart(cart.map(item =>
-        item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
-      ));
-      setSuccessMessage(`Added another ${product.name} to cart`);
-    } else {
-      setCart([...cart, { ...product, quantity: 1 }]);
-      setSuccessMessage(`Added ${product.name} to cart`);
-    }
-    setTimeout(() => setSuccessMessage(null), 2000);
-  };
+
+      // Ignore system/modifier keys (except Shift which is used for some barcode chars)
+      if (e.ctrlKey || e.altKey || e.metaKey || e.key === 'Control' || e.key === 'Alt' || e.key === 'Meta') {
+        return;
+      }
+
+      const now = Date.now();
+      // Reset buffer if time between keystrokes is too long (manual typing vs scanner speed)
+      // Hardware scanners typically send characters < 50ms apart. 500ms is a safe threshold.
+      if (now - lastKeyTime > 500) {
+        buffer = '';
+      }
+      lastKeyTime = now;
+
+      if (e.key === 'Enter') {
+        if (buffer) {
+          e.preventDefault();
+          handleBarcodeSubmit(buffer, 'barcode');
+          buffer = '';
+        }
+      } else if (e.key.length === 1) {
+        buffer += e.key;
+        // Optional: Update UI to show characters arriving
+        // setBarcodeValue(buffer);
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [handleBarcodeSubmit]);
 
   const removeFromCart = (productId: string) => {
     const product = cart.find(item => item.id === productId);
@@ -466,11 +538,34 @@ export default function CashierPOS() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="relative group">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input placeholder="Search item..." className="pl-10 h-11 bg-white dark:bg-gray-800 rounded-xl" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                  <Input 
+                    placeholder="Search item..." 
+                    className="pl-10 h-11 bg-white dark:bg-gray-800 rounded-xl" 
+                    value={searchTerm} 
+                    onChange={(e) => setSearchTerm(e.target.value)} 
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleBarcodeSubmit((e.target as HTMLInputElement).value, 'search');
+                      }
+                    }}
+                  />
                 </div>
                 <div className="relative group">
                   <Barcode className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input ref={barcodeInputRef} placeholder="Scan barcode..." className="pl-10 h-11 bg-white dark:bg-gray-800 rounded-xl" />
+                  <Input 
+                    ref={barcodeInputRef} 
+                    placeholder="Scan barcode..." 
+                    className="pl-10 h-11 bg-white dark:bg-gray-800 rounded-xl"
+                    value={barcodeValue}
+                    onChange={(e) => setBarcodeValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleBarcodeSubmit((e.target as HTMLInputElement).value, 'barcode');
+                      }
+                    }}
+                  />
                 </div>
               </div>
               <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">

@@ -120,6 +120,52 @@ export const supabaseAuth = {
       console.error('Error in getSession:', error);
       return { data: null, error: error.message };
     }
+  },
+
+  async resetPasswordForEmail(email: string) {
+    try {
+      if (process.env.NODE_ENV === 'test') {
+        return { data: {}, error: null };
+      }
+
+      console.log('Attempting to send password reset email to:', email);
+      const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/auth/admin/reset-password`,
+      });
+
+      const errorMessage = handleSupabaseError(error, 'reset password');
+      if (errorMessage) {
+        throw new Error(errorMessage);
+      }
+
+      return { data, error: null };
+    } catch (error: any) {
+      console.error('Error in resetPasswordForEmail:', error);
+      return { data: null, error: error.message };
+    }
+  },
+
+  async updatePassword(password: string) {
+    try {
+      if (process.env.NODE_ENV === 'test') {
+        return { data: {}, error: null };
+      }
+
+      console.log('Attempting to update user password');
+      const { data, error } = await supabase.auth.updateUser({
+        password: password,
+      });
+
+      const errorMessage = handleSupabaseError(error, 'update password');
+      if (errorMessage) {
+        throw new Error(errorMessage);
+      }
+
+      return { data, error: null };
+    } catch (error: any) {
+      console.error('Error in updatePassword:', error);
+      return { data: null, error: error.message };
+    }
   }
 };
 

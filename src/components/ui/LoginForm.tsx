@@ -143,6 +143,14 @@ export const LoginForm: React.FC<LoginFormProps> = ({
                     placeholder="Enter your password"
                   />
                 </div>
+                <div className="mt-2 text-right">
+                  <Link
+                    href="/auth/admin/forgot-password"
+                    className="text-xs font-medium text-primary-600 hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300 transition duration-200"
+                  >
+                    Forgot your password?
+                  </Link>
+                </div>
               </div>
 
               <div>

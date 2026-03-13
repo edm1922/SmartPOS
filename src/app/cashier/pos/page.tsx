@@ -632,7 +632,22 @@ export default function CashierPOS() {
                     <div className="flex items-center justify-between bg-background rounded-xl p-1 shadow-sm">
                       <div className="flex items-center gap-1">
                         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => updateQuantity(item.id, item.quantity - 1)}><Minus className="h-3 w-3" /></Button>
-                        <span className="w-8 text-center text-xs font-black">{item.quantity}</span>
+                        <Input
+                          type="number"
+                          className="w-10 h-8 text-center text-xs font-black bg-transparent border-none p-0 focus-visible:ring-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                          value={item.quantity}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value);
+                            if (!isNaN(val)) {
+                              updateQuantity(item.id, val);
+                            } else if (e.target.value === '') {
+                              // If cleared, we can either set to 0 (removes item) or leave as is. 
+                              // Setting to 0 is the most intuitive "delete" action via input.
+                              updateQuantity(item.id, 0);
+                            }
+                          }}
+                          onFocus={(e) => e.target.select()}
+                        />
                         <Button variant="ghost" size="icon" className="h-8 w-8 text-primary" onClick={() => updateQuantity(item.id, item.quantity + 1)} disabled={item.quantity >= item.stock_quantity}><Plus className="h-3 w-3" /></Button>
                       </div>
                       <span className="text-sm font-black pr-2">{formatPrice(item.price * item.quantity)}</span>

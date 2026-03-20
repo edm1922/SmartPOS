@@ -749,7 +749,7 @@ export default function CashierPOS() {
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-black text-gray-400 uppercase mb-1">OR No.</label>
+                  <label className="block text-[10px] font-black text-gray-400 uppercase mb-1">Purchase Order</label>
                   <Input
                     placeholder="Serial #"
                     value={orNumber}

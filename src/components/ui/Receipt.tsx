@@ -73,7 +73,7 @@ export const Receipt: React.FC<ReceiptProps> = ({
         )}
         {orNumber && (
           <div className="flex justify-between mt-1">
-            <span className="text-red-500 text-sm font-bold">OR No:</span>
+            <span className="text-red-500 text-sm font-bold">Purchase Order:</span>
             <span className="text-sm font-mono font-bold text-red-600">{orNumber}</span>
           </div>
         )}

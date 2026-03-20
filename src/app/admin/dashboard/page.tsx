@@ -56,8 +56,8 @@ export default function AdminDashboard() {
         supabase.from('transactions').select('*').order('created_at', { ascending: false }).limit(5)
       ]);
 
-      const totalRevenue = allTransactions?.reduce((sum, t) => sum + t.total_amount, 0) || 0;
-      const todaySales = todayTransactions?.reduce((sum, t) => sum + t.total_amount, 0) || 0;
+      const totalRevenue = allTransactions?.reduce((sum, t) => sum + Number(t.total_amount || 0), 0) || 0;
+      const todaySales = todayTransactions?.reduce((sum, t) => sum + Number(t.total_amount || 0), 0) || 0;
 
       setStats({
         totalRevenue,
@@ -66,12 +66,22 @@ export default function AdminDashboard() {
         todaySales
       });
 
+      // Pre-fetch names for mapping
+      const [ { data: allCashiers }, { data: allUsers } ] = await Promise.all([
+        supabase.from('cashiers').select('id, username, email'),
+        supabase.from('users').select('id, email')
+      ]);
+
+      const nameMap = new Map();
+      (allCashiers || []).forEach(c => nameMap.set(c.id, c.username || c.email));
+      (allUsers || []).forEach(u => nameMap.set(u.id, u.email));
+
       const activity = [
         ...(latestTransactionsData || []).map((t: any) => ({
           id: t.id,
           action: 'Sale completed',
-          description: `Sale of ${formatPrice(t.total_amount)}`,
-          user: 'Cashier', // Simplified for now to avoid join issues
+          description: `Sale of ${formatPrice(Number(t.total_amount || 0))}`,
+          user: nameMap.get(t.cashier_id) || 'System',
           timestamp: t.created_at,
           type: 'sale'
         })),

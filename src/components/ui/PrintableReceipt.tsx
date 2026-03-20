@@ -118,7 +118,7 @@ export const PrintableReceipt: React.FC<ReceiptProps> = ({
 
         // Transaction info - compressed
         lines.push(`INV:${transactionId.substring(0, 8)} DATE:${formatDate(date)}`);
-        lines.push(`CSR:${cashierName || 'SYSTEM'} CUST:${deliveredTo || 'WALK-IN'}${tin ? ` TIN:${tin}` : ''}${orNumber ? ` OR:${orNumber}` : ''}`);
+        lines.push(`CSR:${cashierName || 'SYSTEM'} CUST:${deliveredTo || 'WALK-IN'}${tin ? ` TIN:${tin}` : ''}${orNumber ? ` Purchase Order:${orNumber}` : ''}`);
 
         // Items header
         lines.push(padRight('ITEM', COLUMNS.ITEM) + padLeft('QTY', COLUMNS.QTY) + padLeft('PRICE', COLUMNS.PRICE) + padLeft('TOTAL', COLUMNS.TOTAL));

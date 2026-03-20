@@ -26,27 +26,52 @@ interface Transaction {
   cashier_id: string;
   total_amount: number;
   payment_method: string;
+  status?: string;
   created_at: string;
   cashier?: { email: string };
 }
 
-type DateRange = 'today' | 'week' | 'month' | 'year';
+type DateRange = 'today' | 'week' | 'month' | 'year' | 'custom';
 
 export default function Reports() {
   const { formatPrice } = useCurrency();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [dateRange, setDateRange] = useState<DateRange>('week');
+  const [customStartDate, setCustomStartDate] = useState(new Date().toISOString().split('T')[0]);
+  const [customEndDate, setCustomEndDate] = useState(new Date().toISOString().split('T')[0]);
 
   useEffect(() => {
     fetchData();
-  }, [dateRange]);
+  }, [dateRange, customStartDate, customEndDate]);
 
   const fetchData = async () => {
     setIsLoading(true);
     try {
       const now = new Date();
       let startDate = new Date();
+
+      if (dateRange === 'custom') {
+        startDate = new Date(customStartDate);
+        startDate.setHours(0, 0, 0, 0);
+        
+        const endDate = new Date(customEndDate);
+        endDate.setHours(23, 59, 59, 999);
+        
+        // Fetch with both start and end dates
+        const { data: transactionsData, error: transactionsError } = await supabase
+          .from('transactions')
+          .select('*')
+          .gte('created_at', startDate.toISOString())
+          .lte('created_at', endDate.toISOString())
+          .order('created_at', { ascending: false });
+          
+        if (transactionsError) throw transactionsError;
+        
+        await processAndSetTransactions(transactionsData);
+        setIsLoading(false);
+        return;
+      }
 
       switch (dateRange) {
         case 'today':
@@ -63,28 +88,15 @@ export default function Reports() {
           break;
       }
 
-      const { data, error } = await supabase
+      const { data: transactionsData, error: transactionsError } = await supabase
         .from('transactions')
-        .select(`
-          id,
-          cashier_id,
-          total_amount,
-          payment_method,
-          created_at,
-          users(email)
-        `)
+        .select('*')
         .gte('created_at', startDate.toISOString())
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (transactionsError) throw transactionsError;
 
-      setTransactions((data || []).map(t => {
-        const user = Array.isArray(t.users) ? t.users[0] : t.users;
-        return {
-          ...t,
-          cashier: user ? { email: user.email } : undefined
-        };
-      }));
+      await processAndSetTransactions(transactionsData);
     } catch (error) {
       console.error('Error fetching report data:', error);
     } finally {
@@ -92,15 +104,36 @@ export default function Reports() {
     }
   };
 
+  const processAndSetTransactions = async (transactionsData: any[] | null) => {
+    // Fetch all cashiers and users to map them manually
+    const [ { data: cashiersData }, { data: usersData } ] = await Promise.all([
+      supabase.from('cashiers').select('id, username, email'),
+      supabase.from('users').select('id, email')
+    ]);
+
+    const cashierMap = new Map();
+    (cashiersData || []).forEach(c => cashierMap.set(c.id, c.username || c.email));
+    (usersData || []).forEach(u => cashierMap.set(u.id, u.email));
+
+    setTransactions((transactionsData || []).map(t => ({
+      ...t,
+      cashier: { email: cashierMap.get(t.cashier_id) || 'System' }
+    })));
+  };
+
   const stats = useMemo(() => {
-    const totalSales = transactions.reduce((sum, t) => sum + t.total_amount, 0);
+    const totalSales = transactions.reduce((sum, t) => sum + Number(t.total_amount || 0), 0);
     const count = transactions.length;
     const avg = count > 0 ? totalSales / count : 0;
-    const highest = transactions.reduce((max, t) => t.total_amount > max ? t.total_amount : max, 0);
+    const highest = transactions.reduce((max, t) => {
+      const amount = Number(t.total_amount || 0);
+      return amount > max ? amount : max;
+    }, 0);
 
     // Payment method breakdown
     const methods = transactions.reduce((acc, t) => {
-      acc[t.payment_method] = (acc[t.payment_method] || 0) + t.total_amount;
+      const amount = Number(t.total_amount || 0);
+      acc[t.payment_method] = (acc[t.payment_method] || 0) + amount;
       return acc;
     }, {} as Record<string, number>);
 
@@ -124,6 +157,39 @@ export default function Reports() {
     }
   };
 
+  const exportToCSV = () => {
+    if (transactions.length === 0) return;
+    
+    // Define headers
+    const headers = ['Date', 'Cashier', 'Payment Method', 'Total Amount', 'Status'];
+    
+    // Format data
+    const rows = transactions.map(t => [
+      new Date(t.created_at).toLocaleString(),
+      t.cashier?.email || 'System',
+      t.payment_method,
+      t.total_amount.toString(),
+      t.status || 'Completed'
+    ]);
+    
+    // Combine headers and rows
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+    ].join('\n');
+    
+    // Create download link
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `sales-report-${dateRange}-${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto p-4 md:p-6">
       {/* Header Section */}
@@ -138,18 +204,37 @@ export default function Reports() {
           </p>
         </div>
 
-        <div className="flex bg-gray-100 dark:bg-gray-800 p-1 rounded-xl">
-          {(['today', 'week', 'month', 'year'] as const).map(range => (
-            <Button
-              key={range}
-              variant={dateRange === range ? 'default' : 'ghost'}
-              size="sm"
-              onClick={() => setDateRange(range)}
-              className={`rounded-lg transition-all ${dateRange === range ? 'shadow-sm' : ''}`}
-            >
-              {range.charAt(0).toUpperCase() + range.slice(1)}
-            </Button>
-          ))}
+        <div className="flex flex-col md:flex-row items-center gap-2">
+          {dateRange === 'custom' && (
+            <div className="flex items-center gap-2 mr-2 animate-in slide-in-from-right duration-300">
+              <input
+                type="date"
+                value={customStartDate}
+                onChange={(e) => setCustomStartDate(e.target.value)}
+                className="bg-gray-100 dark:bg-gray-800 border-none rounded-lg px-2 py-1 text-sm focus:ring-2 focus:ring-primary outline-none"
+              />
+              <span className="text-xs font-bold text-muted-foreground uppercase">to</span>
+              <input
+                type="date"
+                value={customEndDate}
+                onChange={(e) => setCustomEndDate(e.target.value)}
+                className="bg-gray-100 dark:bg-gray-800 border-none rounded-lg px-2 py-1 text-sm focus:ring-2 focus:ring-primary outline-none"
+              />
+            </div>
+          )}
+          <div className="flex bg-gray-100 dark:bg-gray-800 p-1 rounded-xl">
+            {(['today', 'week', 'month', 'year', 'custom'] as const).map(range => (
+              <Button
+                key={range}
+                variant={dateRange === range ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setDateRange(range)}
+                className={`rounded-lg transition-all ${dateRange === range ? 'shadow-sm' : ''}`}
+              >
+                {range.charAt(0).toUpperCase() + range.slice(1)}
+              </Button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -191,7 +276,10 @@ export default function Reports() {
               <History className="h-5 w-5 text-gray-500" />
               <h3 className="text-lg font-semibold">Recent Transactions</h3>
             </div>
-            <FileText className="h-5 w-5 text-muted-foreground cursor-pointer hover:text-primary transition-colors" />
+            <FileText 
+              className="h-5 w-5 text-muted-foreground cursor-pointer hover:text-primary transition-colors" 
+              onClick={exportToCSV}
+            />
           </CardHeader>
           <CardContent className="p-0">
             {isLoading ? (
@@ -246,7 +334,7 @@ export default function Reports() {
                   <div className="p-4 text-center border-t border-gray-100 dark:border-gray-800">
                     <p className="text-sm text-muted-foreground">
                       Showing last 50 of {transactions.length} transactions.
-                      <Button variant="link" size="sm" className="ml-1">View all details</Button>
+                      <Button variant="link" size="sm" className="ml-1" onClick={exportToCSV}>View all details</Button>
                     </p>
                   </div>
                 )}
@@ -283,12 +371,12 @@ export default function Reports() {
                       </div>
                       <div className="w-full bg-gray-100 dark:bg-gray-800 rounded-full h-2 overflow-hidden">
                         <div
-                          className="bg-primary h-full transition-all duration-1000 ease-out"
-                          style={{ width: `${(amount / stats.totalSales) * 100}%` }}
+                          className={`bg-primary h-full transition-all duration-1000 ease-out`}
+                          style={{ width: `${stats.totalSales > 0 ? (amount / stats.totalSales) * 100 : 0}%` }}
                         />
                       </div>
                       <p className="text-[10px] text-right text-muted-foreground mt-1">
-                        {((amount / stats.totalSales) * 100).toFixed(1)}% of total
+                        {((amount / (stats.totalSales || 1)) * 100).toFixed(1)}% of total
                       </p>
                     </div>
                   ))}
@@ -311,7 +399,11 @@ export default function Reports() {
               <p className="text-xs mt-4 leading-relaxed opacity-90">
                 You've processed <strong>{stats.count} transactions</strong> in the selected period, with a total volume of <strong>{formatPrice(stats.totalSales)}</strong>.
               </p>
-              <Button variant="secondary" className="w-full mt-6 bg-white text-primary hover:bg-gray-100 font-semibold shadow-sm">
+              <Button 
+                variant="secondary" 
+                className="w-full mt-6 bg-white text-primary hover:bg-gray-100 font-semibold shadow-sm"
+                onClick={exportToCSV}
+              >
                 Generate Full Analysis
               </Button>
             </CardContent>

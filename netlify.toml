@@ -1,0 +1,25 @@
+# example netlify.toml
+[build]
+  command = "next build"
+  functions = "netlify/functions"
+  publish = ".next"
+
+  ## Uncomment to use this redirect for Single Page Applications like create-react-app.
+  ## Not needed for static site generators.
+  #[[redirects]]
+  #  from = "/*"
+  #  to = "/index.html"
+  #  status = 200
+
+  ## (optional) Settings for Netlify Dev
+  ## https://github.com/netlify/cli/blob/main/docs/netlify-dev.md#project-detection
+  #[dev]
+  #  command = "yarn start" # Command to start your dev server
+  #  port = 3000 # Port that the dev server will be listening on
+  #  publish = "dist" # Folder with the static content for _redirect file
+
+  ## more info on configuring this file: https://ntl.fyi/file-based-build-config
+
+[build.environment]
+  NEXT_PUBLIC_SUPABASE_URL = "https://rgmmbwpyvebqsqdeaprb.supabase.co"
+  NEXT_PUBLIC_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJnbW1id3B5dmVicXNxZGVhcHJiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk2MzMyNDEsImV4cCI6MjA3NTIwOTI0MX0.zGWd1L745Zq-NUn_Ll0Fn5nxCm77-IZttNoLvx-bog8"

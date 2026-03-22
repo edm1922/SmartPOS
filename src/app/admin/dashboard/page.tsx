@@ -48,8 +48,8 @@ export default function AdminDashboard() {
         { data: activityLogs },
         { data: latestTransactionsData }
       ] = await Promise.all([
-        supabase.from('products').select('*', { count: 'exact', head: true }),
-        supabase.from('cashiers').select('*', { count: 'exact', head: true }),
+        supabase.from('products').select('*', { count: 'exact', head: true }).is('deleted_at', null),
+        supabase.from('cashiers').select('*', { count: 'exact', head: true }).is('deleted_at', null),
         supabase.from('transactions').select('total_amount'),
         supabase.from('transactions').select('total_amount').gte('created_at', today.toISOString()),
         supabase.from('activity_logs').select('*, users(email)').order('created_at', { ascending: false }).limit(5),

@@ -429,13 +429,8 @@ export default function CashierPOS() {
       const { error: itemsError } = await supabase.from('transaction_items').insert(transactionItems);
       if (itemsError) throw itemsError;
 
-      for (const item of cart) {
-        const { error: stockError } = await supabase
-          .from('products')
-          .update({ stock_quantity: item.stock_quantity - item.quantity })
-          .eq('id', item.id);
-        if (stockError) console.error('Error updating stock:', stockError);
-      }
+      // Note: Stock deduction is now handled by the database trigger 'tr_deduct_stock_on_insert'
+      // on the 'transaction_items' table. This ensures the update is atomic and secure.
 
       setReceiptData({
         id: transactionData.id,

@@ -78,34 +78,48 @@ export function ProductModal({ isOpen, onClose, product, onSave, setError, user 
     const [lookupError, setLookupError] = useState<string | null>(null);
     const [isUploading, setIsUploading] = useState(false);
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+    const [taxRate, setTaxRate] = useState<number>(0);
+    const [isLoadingTax, setIsLoadingTax] = useState(true);
     const barcodeInputRef = useRef<HTMLInputElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
-        if (product) {
-            reset({
-                name: product.name,
-                description: product.description || '',
-                price: product.price,
-                category: product.category || '',
-                stock_quantity: product.stock_quantity,
-                barcode: product.barcode || '',
-                image_url: product.image_url || '',
-            });
-            setPreviewUrl(product.image_url || null);
-        } else {
-            reset({
-                name: '',
-                description: '',
-                price: 0,
-                category: '',
-                stock_quantity: 0,
-                barcode: '',
-                image_url: '',
-            });
-            setPreviewUrl(null);
+        const fetchTaxRate = async () => {
+            const { data } = await supabaseDB.getSettings();
+            if (data?.tax_rate) setTaxRate(data.tax_rate);
+            setIsLoadingTax(false);
+        };
+        fetchTaxRate();
+    }, []);
+
+    useEffect(() => {
+        if (!isLoadingTax) {
+            if (product) {
+                const basePrice = taxRate > 0 ? Number((product.price / (1 + taxRate / 100)).toFixed(2)) : product.price;
+                reset({
+                    name: product.name,
+                    description: product.description || '',
+                    price: basePrice,
+                    category: product.category || '',
+                    stock_quantity: product.stock_quantity,
+                    barcode: product.barcode || '',
+                    image_url: product.image_url || '',
+                });
+                setPreviewUrl(product.image_url || null);
+            } else {
+                reset({
+                    name: '',
+                    description: '',
+                    price: 0,
+                    category: '',
+                    stock_quantity: 0,
+                    barcode: '',
+                    image_url: '',
+                });
+                setPreviewUrl(null);
+            }
         }
-    }, [product, reset]);
+    }, [product, reset, isLoadingTax, taxRate]);
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
@@ -145,7 +159,7 @@ export function ProductModal({ isOpen, onClose, product, onSave, setError, user 
                 form.setValue('name', productInfo.name);
                 form.setValue('description', productInfo.description || '');
                 form.setValue('category', productInfo.category || '');
-                form.setValue('price', productInfo.price || 0);
+                form.setValue('price with VAT', productInfo.price || 0);
                 form.setValue('barcode', barcode);
                 setLookupError(`Product found: ${productInfo.name}`);
             } else {
@@ -213,8 +227,12 @@ export function ProductModal({ isOpen, onClose, product, onSave, setError, user 
 
     const onSubmit = async (data: ProductFormData) => {
         try {
+            const multiplier = 1 + (taxRate / 100);
+            const finalPrice = Number((data.price * multiplier).toFixed(2));
+            const submissionData = { ...data, price: finalPrice };
+
             if (product) {
-                const { error } = await supabaseDB.updateProduct(product.id, data);
+                const { error } = await supabaseDB.updateProduct(product.id, submissionData);
                 if (error) throw new Error(error);
 
                 if (user) {
@@ -225,7 +243,7 @@ export function ProductModal({ isOpen, onClose, product, onSave, setError, user 
                     );
                 }
             } else {
-                const { error } = await supabaseDB.addProduct(data);
+                const { error } = await supabaseDB.addProduct(submissionData);
                 if (error) throw new Error(error);
 
                 if (user) {
@@ -367,7 +385,7 @@ export function ProductModal({ isOpen, onClose, product, onSave, setError, user 
                             name="price"
                             render={({ field }) => (
                                 <div className="space-y-2">
-                                    <Label htmlFor="price">Price</Label>
+                                    <Label htmlFor="price">Base Price (Cost without VAT)</Label>
                                     <Input
                                         {...field}
                                         id="price"
@@ -375,6 +393,11 @@ export function ProductModal({ isOpen, onClose, product, onSave, setError, user 
                                         step="0.01"
                                         onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
                                     />
+                                    {taxRate > 0 && field.value > 0 && (
+                                        <p className="text-[10px] text-primary font-bold">
+                                            Final Shelf Price you will charge: ₱{(field.value * (1 + taxRate / 100)).toFixed(2)} (includes VAT)
+                                        </p>
+                                    )}
                                 </div>
                             )}
                         />

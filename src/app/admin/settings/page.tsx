@@ -262,7 +262,7 @@ export default function Settings() {
                       )} />
                       <FormField name="taxRate" render={({ field }) => (
                         <div className="space-y-2">
-                          <Label className="text-sm font-semibold">Standard Tax Rate (%)</Label>
+                          <Label className="text-sm font-semibold">Standard VAT (%)</Label>
                           <div className="relative">
                             <Input
                               {...field}
@@ -332,7 +332,7 @@ export default function Settings() {
                           <div className="flex items-center justify-between p-3 rounded-lg bg-white dark:bg-gray-800 shadow-sm border border-gray-100">
                             <div className="flex items-center gap-3">
                               <div className="h-8 w-8 rounded-full bg-green-50 dark:bg-green-900/20 flex items-center justify-center text-green-600 text-xs font-bold font-mono">%</div>
-                              <span className="text-sm font-medium">Show Tax Details</span>
+                              <span className="text-sm font-medium">Show VAT Details</span>
                             </div>
                             <input
                               type="checkbox"
@@ -421,7 +421,7 @@ export default function Settings() {
                               </div>
                               {watchedValues.showTaxOnReceipt && (
                                 <div className="flex justify-between text-gray-500">
-                                  <span>TAX ({watchedValues.taxRate || 0}%)</span>
+                                  <span>VAT ({watchedValues.taxRate || 0}%)</span>
                                   <span>{formatPrice(150 * (watchedValues.taxRate || 0) / 100)}</span>
                                 </div>
                               )}

@@ -14,6 +14,7 @@ interface ReceiptProps {
     tax: number;
     total: number;
     paymentMethod: string;
+    referenceNumber?: string;
     amountReceived?: number;
     change?: number;
     storeName?: string;
@@ -37,6 +38,7 @@ export const PrintableReceipt: React.FC<ReceiptProps> = ({
     tax,
     total,
     paymentMethod,
+    referenceNumber,
     amountReceived,
     change,
     storeName = 'AJ SOFTDRIVE',
@@ -138,19 +140,14 @@ export const PrintableReceipt: React.FC<ReceiptProps> = ({
             lines.push(padRight(`+${remainingCount} items`, COLUMNS.ITEM + COLUMNS.QTY + COLUMNS.PRICE) + padLeft(formatCurrency(remainingTotal), COLUMNS.TOTAL));
         }
 
-        // VAT Calculation based on formula:
-        // VAT Amount = Net Price (subtotal) × (VAT Rate ÷ 100)
-        // Final Price (Gross) = Net Price + VAT Amount
-        const vatAmount = subtotal * (taxRate / 100);
-        const finalPrice = subtotal + vatAmount;
-
-        // Totals
-        lines.push(' '.repeat(TOTAL_WIDTH - 20) + `SUBTOTAL ${formatCurrency(subtotal)}`);
-        lines.push(' '.repeat(TOTAL_WIDTH - 20) + `VAT (${taxRate}%) ${formatCurrency(vatAmount)}`);
-        lines.push(' '.repeat(TOTAL_WIDTH - 15) + `TOTAL ${formatCurrency(finalPrice)}`);
+        // Totals (VAT is inclusive in product prices)
+        lines.push(' '.repeat(TOTAL_WIDTH - 15) + `TOTAL ${formatCurrency(total)}`);
 
         // Payment
         lines.push(`PMT:${paymentMethod.toUpperCase()} ${amountReceived ? `CASH:${formatCurrency(amountReceived)}` : ''} ${change ? `CHG:${formatCurrency(change)}` : ''}`);
+        if (referenceNumber) {
+            lines.push(`REF:${referenceNumber}`);
+        }
 
         // Footer
         lines.push(receiptFooter);

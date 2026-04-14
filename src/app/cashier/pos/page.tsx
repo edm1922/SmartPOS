@@ -37,9 +37,11 @@ import {
   Wallet,
   Monitor,
   Landmark,
-  Check
+  Check,
+  FileText
 } from 'lucide-react';
 import { PrintableReceipt } from '@/components/ui/PrintableReceipt';
+import { DailyReportModal } from '@/components/cashier/DailyReportModal';
 
 interface Product {
   id: string;
@@ -63,9 +65,11 @@ export default function CashierPOS() {
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [isDailyReportOpen, setIsDailyReportOpen] = useState(false);
   const [isCartOpen, setIsCartOpen] = useState(false); // For mobile cart drawer
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'mobile' | 'cheque'>('cash');
   const [amountReceived, setAmountReceived] = useState('');
+  const [referenceNumber, setReferenceNumber] = useState('');
   const [transactionComplete, setTransactionComplete] = useState(false);
   const [receiptData, setReceiptData] = useState<any>(null);
   const [settings, setSettings] = useState<any>(null);
@@ -377,7 +381,7 @@ export default function CashierPOS() {
   };
 
   const calculateChange = () => {
-    const total = calculateTotal() * (1 + (settings?.tax_rate || 0) / 100);
+    const total = calculateTotal();
     const received = parseFloat(amountReceived) || 0;
     return Math.max(0, received - total);
   };
@@ -404,10 +408,15 @@ export default function CashierPOS() {
 
       if (cashierError || !cashierData?.is_active) throw new Error('Cashier account error.');
 
+      if (['card', 'mobile', 'cheque'].includes(paymentMethod) && !referenceNumber.trim()) {
+        throw new Error(`A reference number is required for ${paymentMethod} payments.`);
+      }
+
       const transactionPayload = {
         cashier_id: cashierId,
         total_amount: calculateTotal(),
         payment_method: paymentMethod,
+        reference_number: ['card', 'mobile', 'cheque'].includes(paymentMethod) ? referenceNumber : null,
         status: 'completed'
       };
 
@@ -438,12 +447,14 @@ export default function CashierPOS() {
         items: [...cart],
         total: calculateTotal(),
         paymentMethod,
+        referenceNumber: ['card', 'mobile', 'cheque'].includes(paymentMethod) ? referenceNumber : null,
         amountReceived: parseFloat(amountReceived) || calculateTotal(),
         change: calculateChange()
       });
 
       setCart([]);
       setAmountReceived('');
+      setReferenceNumber('');
       setIsPaymentModalOpen(false);
       setIsReceiptModalOpen(true);
       setTransactionComplete(true);
@@ -522,6 +533,7 @@ export default function CashierPOS() {
           <div className="flex items-center gap-2">
             <ThemeToggle />
             <div className="h-8 w-px bg-border mx-2" />
+            <Button onClick={() => setIsDailyReportOpen(true)} variant="outline" size="sm" className="font-bold text-xs flex items-center gap-2 border-dashed border-primary/50 text-primary hover:bg-primary/10"><FileText className="h-4 w-4 hidden md:block" /> DAILY REPORT</Button>
             <Button onClick={() => setIsSettingsModalOpen(true)} variant="ghost" size="sm" className="font-bold text-xs"><Settings className="h-4 w-4" /></Button>
             <Button onClick={handleSignOut} variant="destructive" size="sm" className="font-bold text-xs flex items-center gap-2"><LogOut className="h-4 w-4" /> LOCK</Button>
           </div>
@@ -653,11 +665,9 @@ export default function CashierPOS() {
             </div>
             <div className="p-6 bg-muted/30 border-t border-border shrink-0 space-y-4">
               <div className="space-y-1">
-                <div className="flex justify-between text-xs font-bold text-muted-foreground uppercase"><span>Subtotal</span><span>{formatPrice(calculateTotal())}</span></div>
-                <div className="flex justify-between text-xs font-bold text-muted-foreground uppercase"><span>VAT</span><span>{formatPrice(calculateTotal() * (settings?.tax_rate || 0) / 100)}</span></div>
-                <div className="pt-2 border-t border-gray-200 dark:border-gray-800 flex justify-between items-center text-2xl font-black dark:text-white">
+                <div className="flex justify-between items-center text-2xl font-black dark:text-white">
                   <span className="text-sm uppercase">Total</span>
-                  <span className="text-primary">{formatPrice(calculateTotal() * (1 + (settings?.tax_rate || 0) / 100))}</span>
+                  <span className="text-primary">{formatPrice(calculateTotal())}</span>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -672,7 +682,7 @@ export default function CashierPOS() {
           <div className="space-y-8 p-2">
             <div className="text-center">
               <p className="text-xs font-bold text-gray-600 dark:text-gray-400 uppercase tracking-widest mb-1">Total Due</p>
-              <h2 className="text-5xl font-black text-primary">{formatPrice(calculateTotal() * (1 + (settings?.tax_rate || 0) / 100))}</h2>
+              <h2 className="text-5xl font-black text-primary">{formatPrice(calculateTotal())}</h2>
             </div>
             <div className="grid grid-cols-4 gap-4">
               <PaymentTab active={paymentMethod === 'cash'} onClick={() => setPaymentMethod('cash')} icon={<Wallet className="h-5 w-5" />} label="Cash" />
@@ -687,7 +697,7 @@ export default function CashierPOS() {
                   <Input type="number" className="h-20 text-center text-4xl font-black bg-card rounded-2xl" placeholder="0.00" value={amountReceived} onChange={(e) => setAmountReceived(e.target.value)} autoFocus />
                   <div className="absolute left-6 top-1/2 -translate-y-1/2 text-2xl font-black text-gray-300">₱</div>
                 </div>
-                {parseFloat(amountReceived) >= (calculateTotal() * (1 + (settings?.tax_rate || 0) / 100)) && (
+                {parseFloat(amountReceived) >= calculateTotal() && (
                   <div className="mt-6 text-center animate-in zoom-in duration-300">
                     <p className="text-xs font-black text-green-600 uppercase mb-1">Change Due</p>
                     <h3 className="text-4xl font-black text-green-700">{formatPrice(calculateChange())}</h3>
@@ -695,6 +705,23 @@ export default function CashierPOS() {
                 )}
               </div>
             )}
+            
+            {['card', 'mobile', 'cheque'].includes(paymentMethod) && (
+              <div className="bg-muted/50 p-6 rounded-3xl border border-border">
+                <label className="block text-xs font-black uppercase text-gray-600 dark:text-gray-400 mb-3 text-center">Reference / Trace Number</label>
+                <div className="relative">
+                  <Input 
+                    type="text" 
+                    className="h-20 text-center text-4xl font-black bg-card rounded-2xl" 
+                    placeholder={`Enter ${paymentMethod} reference...`} 
+                    value={referenceNumber} 
+                    onChange={(e) => setReferenceNumber(e.target.value)} 
+                    autoFocus 
+                  />
+                </div>
+              </div>
+            )}
+            
             <div className="flex gap-4">
               <Button variant="ghost" className="flex-1 h-14 rounded-2xl font-bold uppercase" onClick={() => setIsPaymentModalOpen(false)}>Back</Button>
               <Button className="flex-[2] h-14 rounded-2xl font-black uppercase" onClick={completeTransaction}>Finalize</Button>
@@ -718,8 +745,11 @@ export default function CashierPOS() {
                   <p className="text-gray-500 text-xs mt-2 italic whitespace-pre-wrap">{settings.receipt_header}</p>
                 )}
               </div>
-              <div className="grid grid-cols-2 gap-4 border-y border-dashed border-gray-200 py-6 mb-8 text-xs">
+              <div className={`grid ${receiptData.referenceNumber ? 'grid-cols-3' : 'grid-cols-2'} gap-4 border-y border-dashed border-gray-200 py-6 mb-8 text-xs`}>
                 <div><p className="font-black text-gray-400 uppercase">Order Ref</p><p className="font-mono font-bold">{receiptData.id.substring(0, 8).toUpperCase()}</p></div>
+                {receiptData.referenceNumber && (
+                  <div className="text-center"><p className="font-black text-gray-400 uppercase">Payment Ref</p><p className="font-mono font-bold uppercase">{receiptData.referenceNumber}</p></div>
+                )}
                 <div className="text-right"><p className="font-black text-gray-400 uppercase">Method</p><Badge className="text-[8px] font-black uppercase h-4 px-1.5">{receiptData.paymentMethod}</Badge></div>
               </div>
 
@@ -806,22 +836,8 @@ export default function CashierPOS() {
               </div>
               <div className="bg-gray-50 p-6 rounded-2xl mb-8 space-y-2">
                 <div className="flex justify-between items-center text-xl font-black text-gray-900">
-                  <div className="space-y-1 mb-2">
-                    <div className="flex justify-between text-sm text-gray-500">
-                      <span>Subtotal</span>
-                      <span>{formatPrice(receiptData.total)}</span>
-                    </div>
-                    {settings?.show_tax_on_receipt && (
-                      <div className="flex justify-between text-sm text-gray-500">
-                        <span>VAT ({settings.tax_rate}%)</span>
-                        <span>{formatPrice(receiptData.total * (settings.tax_rate || 0) / 100)}</span>
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex justify-between items-center text-xl font-black text-gray-900 pt-2 border-t border-gray-200">
-                    <span className="text-[10px] uppercase">Grand Total</span>
-                    <span className="text-2xl">{formatPrice(receiptData.total * (1 + (settings?.tax_rate || 0) / 100))}</span>
-                  </div>
+                  <span className="text-sm uppercase">Grand Total</span>
+                  <span className="text-2xl">{formatPrice(receiptData.total)}</span>
                 </div>
               </div>
               <div className="text-center text-xs text-gray-500 mb-6 whitespace-pre-wrap">
@@ -852,8 +868,8 @@ export default function CashierPOS() {
             date={receiptData.date}
             items={receiptData.items}
             subtotal={receiptData.total}
-            tax={receiptData.total * (settings?.tax_rate || 0) / 100}
-            total={receiptData.total * (1 + (settings?.tax_rate || 0) / 100)}
+            tax={0}
+            total={receiptData.total}
             paymentMethod={receiptData.paymentMethod}
             amountReceived={receiptData.amountReceived}
             change={receiptData.change}
@@ -871,6 +887,13 @@ export default function CashierPOS() {
           />
         )}
       </div>
+
+      <DailyReportModal 
+        isOpen={isDailyReportOpen} 
+        onClose={() => setIsDailyReportOpen(false)} 
+        cashierId={user?.cashier_id || null} 
+        cashierName={user?.cashier_username || null} 
+      />
     </>
   );
 }

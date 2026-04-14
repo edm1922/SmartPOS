@@ -29,6 +29,10 @@ interface Transaction {
   status?: string;
   created_at: string;
   cashier?: { email: string };
+  transaction_items?: Array<{
+    quantity: number;
+    products?: { name: string };
+  }>;
 }
 
 type DateRange = 'today' | 'week' | 'month' | 'year' | 'custom';
@@ -61,7 +65,7 @@ export default function Reports() {
         // Fetch with both start and end dates
         const { data: transactionsData, error: transactionsError } = await supabase
           .from('transactions')
-          .select('*')
+          .select('*, transaction_items(quantity, products(name))')
           .gte('created_at', startDate.toISOString())
           .lte('created_at', endDate.toISOString())
           .order('created_at', { ascending: false });
@@ -90,7 +94,7 @@ export default function Reports() {
 
       const { data: transactionsData, error: transactionsError } = await supabase
         .from('transactions')
-        .select('*')
+        .select('*, transaction_items(quantity, products(name))')
         .gte('created_at', startDate.toISOString())
         .order('created_at', { ascending: false });
 
@@ -161,12 +165,13 @@ export default function Reports() {
     if (transactions.length === 0) return;
     
     // Define headers
-    const headers = ['Date', 'Cashier', 'Payment Method', 'Total Amount', 'Status'];
+    const headers = ['Date', 'Cashier', 'Products', 'Payment Method', 'Total Amount', 'Status'];
     
     // Format data
     const rows = transactions.map(t => [
       new Date(t.created_at).toLocaleString(),
       t.cashier?.email || 'System',
+      t.transaction_items?.map((item) => `${item.quantity}x ${item.products?.name || 'Unknown'}`).join('; ') || '',
       t.payment_method,
       t.total_amount.toString(),
       t.status || 'Completed'
@@ -293,6 +298,7 @@ export default function Reports() {
                     <TableRow>
                       <TableHead className="w-[180px]">Date & Time</TableHead>
                       <TableHead>Cashier</TableHead>
+                      <TableHead>Products</TableHead>
                       <TableHead>Payment Method</TableHead>
                       <TableHead className="text-right">Total Amount</TableHead>
                     </TableRow>
@@ -309,6 +315,11 @@ export default function Reports() {
                               {t.cashier?.email.substring(0, 2).toUpperCase() || '??'}
                             </div>
                             <span className="truncate max-w-[150px]">{t.cashier?.email || 'System'}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="text-xs text-gray-500 max-w-[200px] truncate" title={t.transaction_items?.map(ti => `${ti.quantity}x ${ti.products?.name || 'Item'}`).join(', ') || ''}>
+                            {t.transaction_items?.map(ti => `${ti.quantity}x ${ti.products?.name || 'Item'}`).join(', ') || '-'}
                           </div>
                         </TableCell>
                         <TableCell>

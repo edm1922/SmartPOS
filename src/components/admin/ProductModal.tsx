@@ -159,7 +159,7 @@ export function ProductModal({ isOpen, onClose, product, onSave, setError, user 
                 form.setValue('name', productInfo.name);
                 form.setValue('description', productInfo.description || '');
                 form.setValue('category', productInfo.category || '');
-                form.setValue('price with VAT', productInfo.price || 0);
+                form.setValue('price', productInfo.price || 0);
                 form.setValue('barcode', barcode);
                 setLookupError(`Product found: ${productInfo.name}`);
             } else {

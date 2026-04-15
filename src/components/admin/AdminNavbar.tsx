@@ -32,7 +32,7 @@ export function AdminNavbar() {
                     <div className="flex justify-between h-16">
                         <div className="flex">
                             <div className="flex-shrink-0 flex items-center">
-                                <div className="bg-primary-600 w-8 h-8 rounded-full"></div>
+                                <img src="/logo.jpg" alt="Logo" className="w-8 h-8 rounded-lg object-cover shadow-sm" />
                                 <span className="ml-2 text-xl font-bold text-gray-900 dark:text-white">POS Admin</span>
                             </div>
                             {/* Desktop navigation */}

@@ -518,9 +518,7 @@ export default function CashierPOS() {
 
         <header className="bg-card border-b border-border h-16 flex items-center justify-between px-6 shrink-0 relative z-10">
           <div className="flex items-center gap-4">
-            <div className="h-10 w-10 bg-primary rounded-xl flex items-center justify-center text-white shadow-lg shadow-primary/20">
-              <Monitor className="h-6 w-6" />
-            </div>
+            <img src="/logo.jpg" alt="Logo" className="h-10 w-10 rounded-xl object-cover shadow-lg shadow-primary/20" />
             <div>
               <h1 className="text-lg font-black tracking-tight dark:text-white uppercase leading-none">SmartPOS <span className="text-primary text-[10px] bg-primary/10 px-1.5 py-0.5 rounded-md ml-1">Terminal</span></h1>
               <p className="text-[10px] text-muted-foreground font-bold mt-1 uppercase flex items-center gap-1">

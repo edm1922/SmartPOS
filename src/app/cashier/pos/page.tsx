@@ -832,9 +832,17 @@ export default function CashierPOS() {
                   </tbody>
                 </table>
               </div>
-              <div className="bg-gray-50 p-6 rounded-2xl mb-8 space-y-2">
-                <div className="flex justify-between items-center text-xl font-black text-gray-900">
-                  <span className="text-sm uppercase">Grand Total</span>
+              <div className="bg-gray-50 p-6 rounded-2xl mb-8 space-y-3">
+                <div className="flex justify-between items-center text-gray-600">
+                  <span className="text-xs font-bold uppercase">VATable Sales</span>
+                  <span className="font-bold">{formatPrice(receiptData.total / (1 + (settings?.tax_rate || 12) / 100))}</span>
+                </div>
+                <div className="flex justify-between items-center text-gray-600">
+                  <span className="text-xs font-bold uppercase">Less VAT</span>
+                  <span className="font-bold">{formatPrice(receiptData.total - (receiptData.total / (1 + (settings?.tax_rate || 12) / 100)))}</span>
+                </div>
+                <div className="border-t border-dashed border-gray-300 pt-3 flex justify-between items-center text-xl font-black text-gray-900">
+                  <span className="text-sm uppercase">Total Sales (VAT Inclusive)</span>
                   <span className="text-2xl">{formatPrice(receiptData.total)}</span>
                 </div>
               </div>

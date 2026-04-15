@@ -141,7 +141,15 @@ export const PrintableReceipt: React.FC<ReceiptProps> = ({
         }
 
         // Totals (VAT is inclusive in product prices)
-        lines.push(' '.repeat(TOTAL_WIDTH - 15) + `TOTAL ${formatCurrency(total)}`);
+        const currentTaxRate = taxRate || 12;
+        const vatableSales = total / (1 + currentTaxRate / 100);
+        const vatAmount = total - vatableSales;
+
+        lines.push('-'.repeat(TOTAL_WIDTH));
+        lines.push(padRight('VATable Sales', TOTAL_WIDTH - 12) + padLeft(formatCurrency(vatableSales), 12));
+        lines.push(padRight('Less VAT', TOTAL_WIDTH - 12) + padLeft(formatCurrency(vatAmount), 12));
+        lines.push(padRight('TOTAL SALES(VAT Inclusive)', TOTAL_WIDTH - 12) + padLeft(formatCurrency(total), 12));
+        lines.push('-'.repeat(TOTAL_WIDTH));
 
         // Payment
         lines.push(`PMT:${paymentMethod.toUpperCase()} ${amountReceived ? `CASH:${formatCurrency(amountReceived)}` : ''} ${change ? `CHG:${formatCurrency(change)}` : ''}`);

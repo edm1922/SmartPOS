@@ -13,10 +13,16 @@ interface ReceiptProps {
     subtotal: number;
     tax: number;
     total: number;
+    originalTotal?: number;
+    discountPercent?: number;
+    discountAmount?: number;
     paymentMethod: string;
     referenceNumber?: string;
     amountReceived?: number;
     change?: number;
+    downPayment?: number;
+    remainingBalance?: number;
+    dueDate?: string;
     storeName?: string;
     storeAddress?: string;
     storePhone?: string;
@@ -37,10 +43,16 @@ export const PrintableReceipt: React.FC<ReceiptProps> = ({
     subtotal,
     tax,
     total,
+    originalTotal,
+    discountPercent,
+    discountAmount,
     paymentMethod,
     referenceNumber,
     amountReceived,
     change,
+    downPayment,
+    remainingBalance,
+    dueDate,
     storeName = 'AJ SOFTDRIVE',
     storeAddress = 'Lapu-Lapu Street Tacurong City, Sultan Kudarat',
     storePhone = '+63 912 345 6789',
@@ -140,6 +152,11 @@ export const PrintableReceipt: React.FC<ReceiptProps> = ({
             lines.push(padRight(`+${remainingCount} items`, COLUMNS.ITEM + COLUMNS.QTY + COLUMNS.PRICE) + padLeft(formatCurrency(remainingTotal), COLUMNS.TOTAL));
         }
 
+        // Discount line (if applicable)
+        if (discountPercent && discountAmount && discountAmount > 0) {
+            lines.push(padRight(`Discount (${discountPercent}%)`, TOTAL_WIDTH - 12) + padLeft(`-${formatCurrency(discountAmount)}`, 12));
+        }
+
         // Totals (VAT is inclusive in product prices)
         const currentTaxRate = taxRate || 12;
         const vatableSales = total / (1 + currentTaxRate / 100);
@@ -152,9 +169,14 @@ export const PrintableReceipt: React.FC<ReceiptProps> = ({
         lines.push('-'.repeat(TOTAL_WIDTH));
 
         // Payment
-        lines.push(`PMT:${paymentMethod.toUpperCase()} ${amountReceived ? `CASH:${formatCurrency(amountReceived)}` : ''} ${change ? `CHG:${formatCurrency(change)}` : ''}`);
-        if (referenceNumber) {
-            lines.push(`REF:${referenceNumber}`);
+        if (paymentMethod.toLowerCase() === 'term') {
+            lines.push(`TERM: AMOUNT DUE ${formatCurrency(remainingBalance || amountReceived || 0)}`);
+            lines.push(`DUE DATE: ${dueDate ? new Date(dueDate).toLocaleDateString() : 'N/A'}`);
+        } else {
+            lines.push(`PMT:${paymentMethod.toUpperCase()} ${amountReceived ? `CASH:${formatCurrency(amountReceived)}` : ''} ${change ? `CHG:${formatCurrency(change)}` : ''}`);
+            if (referenceNumber) {
+                lines.push(`REF:${referenceNumber}`);
+            }
         }
 
         // Footer

@@ -200,7 +200,7 @@ export const validateTransactionData = (data: any) => {
     errors.push('Payment method is required');
   } else {
     sanitizedData.payment_method = sanitizeString(data.payment_method);
-    if (!['cash', 'card', 'mobile'].includes(sanitizedData.payment_method)) {
+    if (!['cash', 'card', 'mobile', 'cheque', 'term'].includes(sanitizedData.payment_method)) {
       errors.push('Invalid payment method');
     }
   }

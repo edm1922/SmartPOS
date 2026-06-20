@@ -37,6 +37,7 @@ import {
   Wallet,
   Monitor,
   Landmark,
+  CalendarDays,
   Check,
   FileText
 } from 'lucide-react';
@@ -67,7 +68,7 @@ export default function CashierPOS() {
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isDailyReportOpen, setIsDailyReportOpen] = useState(false);
   const [isCartOpen, setIsCartOpen] = useState(false); // For mobile cart drawer
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'mobile' | 'cheque'>('cash');
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'mobile' | 'cheque' | 'term'>('cash');
   const [amountReceived, setAmountReceived] = useState('');
   const [referenceNumber, setReferenceNumber] = useState('');
   const [transactionComplete, setTransactionComplete] = useState(false);
@@ -77,6 +78,11 @@ export default function CashierPOS() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null); // For success notifications
   const [barcodeValue, setBarcodeValue] = useState('');
+  const [customerName, setCustomerName] = useState('');
+  const [applyDiscount, setApplyDiscount] = useState(false);
+  const [discountPercent, setDiscountPercent] = useState(0);
+  const [downPaymentPercent, setDownPaymentPercent] = useState(20);
+  const [termDays, setTermDays] = useState(30);
   const [deliveredTo, setDeliveredTo] = useState('');
   const [tin, setTin] = useState('');
   const [orNumber, setOrNumber] = useState('');
@@ -381,13 +387,19 @@ export default function CashierPOS() {
   };
 
   const calculateChange = () => {
-    const total = calculateTotal();
+    if (paymentMethod === 'term') return 0;
+    const raw = calculateTotal();
+    const total = applyDiscount && discountPercent > 0
+      ? parseFloat((raw - (raw * discountPercent / 100)).toFixed(2))
+      : raw;
     const received = parseFloat(amountReceived) || 0;
-    return Math.max(0, received - total);
+    return parseFloat((received - total).toFixed(2));
   };
 
   const handleProcessPayment = () => {
     if (cart.length > 0) {
+      setDownPaymentPercent(20);
+      setTermDays(30);
       setIsPaymentModalOpen(true);
     }
   };
@@ -412,13 +424,60 @@ export default function CashierPOS() {
         throw new Error(`A reference number is required for ${paymentMethod} payments.`);
       }
 
-      const transactionPayload = {
+      let customerId = null;
+      if (customerName.trim()) {
+        try {
+          const { data: existingCustomer, error: lookupError } = await supabase
+            .from('customers')
+            .select('id')
+            .eq('name', customerName.trim())
+            .maybeSingle();
+
+          if (lookupError) throw lookupError;
+
+          if (existingCustomer) {
+            customerId = existingCustomer.id;
+          } else {
+            const { data: newCustomer, error: insertError } = await supabase
+              .from('customers')
+              .insert({ name: customerName.trim() })
+              .select('id')
+              .single();
+            if (insertError) throw insertError;
+            customerId = newCustomer?.id || null;
+          }
+        } catch (err) {
+          console.error('Error creating/finding customer:', err);
+        }
+      }
+
+      const rawTotal = calculateTotal();
+      const discountAmount = applyDiscount && discountPercent > 0
+        ? parseFloat((rawTotal * discountPercent / 100).toFixed(2))
+        : 0;
+      const finalTotal = parseFloat((rawTotal - discountAmount).toFixed(2));
+      const downPaymentAmount = 0;
+      const termRemaining = parseFloat(finalTotal.toFixed(2));
+      const termDue = new Date(Date.now() + termDays * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+      const transactionPayload: Record<string, any> = {
         cashier_id: cashierId,
-        total_amount: calculateTotal(),
+        total_amount: finalTotal,
         payment_method: paymentMethod,
         reference_number: ['card', 'mobile', 'cheque'].includes(paymentMethod) ? referenceNumber : null,
+        customer_id: customerId,
+        discount_type: applyDiscount && discountPercent > 0 ? 'percentage' : null,
+        discount_value: applyDiscount && discountPercent > 0 ? discountPercent : 0,
+        discount_amount: discountAmount,
         status: 'completed'
       };
+
+      if (paymentMethod === 'term') {
+        transactionPayload.down_payment = 0;
+        transactionPayload.term_remaining_balance = termRemaining;
+        transactionPayload.term_due_date = termDue;
+        transactionPayload.term_status = 'pending';
+      }
 
       const { data: transactionData, error: transactionError } = await supabase
         .from('transactions')
@@ -445,13 +504,25 @@ export default function CashierPOS() {
         id: transactionData.id,
         date: new Date().toISOString(),
         items: [...cart],
-        total: calculateTotal(),
+        total: finalTotal,
+        originalTotal: rawTotal,
+        discountPercent: applyDiscount && discountPercent > 0 ? discountPercent : 0,
+        discountAmount: discountAmount,
         paymentMethod,
         referenceNumber: ['card', 'mobile', 'cheque'].includes(paymentMethod) ? referenceNumber : null,
-        amountReceived: parseFloat(amountReceived) || calculateTotal(),
-        change: calculateChange()
+        amountReceived: paymentMethod === 'term' ? downPaymentAmount : (parseFloat(amountReceived) || finalTotal),
+        change: calculateChange(),
+        downPayment: downPaymentAmount,
+        remainingBalance: termRemaining,
+        dueDate: termDue
       });
 
+      setDeliveredTo(customerName);
+      setCustomerName('');
+      setApplyDiscount(false);
+      setDiscountPercent(0);
+      setDownPaymentPercent(20);
+      setTermDays(30);
       setCart([]);
       setAmountReceived('');
       setReferenceNumber('');
@@ -680,13 +751,22 @@ export default function CashierPOS() {
           <div className="space-y-8 p-2">
             <div className="text-center">
               <p className="text-xs font-bold text-gray-600 dark:text-gray-400 uppercase tracking-widest mb-1">Total Due</p>
-              <h2 className="text-5xl font-black text-primary">{formatPrice(calculateTotal())}</h2>
+              {applyDiscount && discountPercent > 0 ? (
+                <>
+                  <p className="text-lg font-bold text-muted-foreground line-through">{formatPrice(calculateTotal())}</p>
+                  <h2 className="text-5xl font-black text-green-600">{formatPrice(parseFloat((calculateTotal() - (calculateTotal() * discountPercent / 100)).toFixed(2)))}</h2>
+                  <p className="text-xs font-bold text-green-600 mt-1">-{discountPercent}% Discount</p>
+                </>
+              ) : (
+                <h2 className="text-5xl font-black text-primary">{formatPrice(calculateTotal())}</h2>
+              )}
             </div>
-            <div className="grid grid-cols-4 gap-4">
+            <div className="grid grid-cols-5 gap-4">
               <PaymentTab active={paymentMethod === 'cash'} onClick={() => setPaymentMethod('cash')} icon={<Wallet className="h-5 w-5" />} label="Cash" />
               <PaymentTab active={paymentMethod === 'card'} onClick={() => setPaymentMethod('card')} icon={<CreditCard className="h-5 w-5" />} label="Card" />
               <PaymentTab active={paymentMethod === 'mobile'} onClick={() => setPaymentMethod('mobile')} icon={<Monitor className="h-5 w-5" />} label="Mobile" />
               <PaymentTab active={paymentMethod === 'cheque'} onClick={() => setPaymentMethod('cheque')} icon={<Landmark className="h-5 w-5" />} label="Cheque" />
+              <PaymentTab active={paymentMethod === 'term'} onClick={() => setPaymentMethod('term')} icon={<CalendarDays className="h-5 w-5" />} label="Term" />
             </div>
             {paymentMethod === 'cash' && (
               <div className="bg-muted/50 p-6 rounded-3xl border border-border">
@@ -695,7 +775,7 @@ export default function CashierPOS() {
                   <Input type="number" className="h-20 text-center text-4xl font-black bg-card rounded-2xl" placeholder="0.00" value={amountReceived} onChange={(e) => setAmountReceived(e.target.value)} autoFocus />
                   <div className="absolute left-6 top-1/2 -translate-y-1/2 text-2xl font-black text-gray-300">₱</div>
                 </div>
-                {parseFloat(amountReceived) >= calculateTotal() && (
+                {parseFloat(amountReceived) >= (applyDiscount && discountPercent > 0 ? parseFloat((calculateTotal() - (calculateTotal() * discountPercent / 100)).toFixed(2)) : calculateTotal()) && (
                   <div className="mt-6 text-center animate-in zoom-in duration-300">
                     <p className="text-xs font-black text-green-600 uppercase mb-1">Change Due</p>
                     <h3 className="text-4xl font-black text-green-700">{formatPrice(calculateChange())}</h3>
@@ -719,7 +799,115 @@ export default function CashierPOS() {
                 </div>
               </div>
             )}
+
+            {paymentMethod === 'term' && (
+              <div className="bg-muted/50 p-6 rounded-3xl border border-border space-y-4">
+                <div>
+                  <label className="block text-xs font-black uppercase text-gray-600 dark:text-gray-400 mb-3 text-center">Terms Duration</label>
+                  <div className="relative">
+                    <Input
+                      type="number"
+                      className="h-20 text-center text-4xl font-black bg-card rounded-2xl"
+                      placeholder="30"
+                      min={1}
+                      value={termDays || ''}
+                      onChange={(e) => setTermDays(Math.max(1, parseInt(e.target.value) || 1))}
+                      autoFocus
+                    />
+                    <span className="absolute right-6 top-1/2 -translate-y-1/2 text-2xl font-black text-muted-foreground">Days</span>
+                  </div>
+                </div>
+                <div className="bg-background rounded-xl p-3 space-y-1">
+                  {(() => {
+                    const rawTotal = calculateTotal();
+                    const discAmount = applyDiscount && discountPercent > 0 ? parseFloat((rawTotal * discountPercent / 100).toFixed(2)) : 0;
+                    const discTotal = parseFloat((rawTotal - discAmount).toFixed(2));
+                    const due = new Date(Date.now() + termDays * 24 * 60 * 60 * 1000);
+                    return (
+                      <>
+                        {applyDiscount && discountPercent > 0 && (
+                          <div className="flex justify-between text-xs">
+                            <span className="text-muted-foreground">Subtotal</span>
+                            <span className="font-bold line-through">{formatPrice(rawTotal)}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between text-xs">
+                          <span className="text-muted-foreground">Total Due</span>
+                          <span className="font-bold">{formatPrice(discTotal)}</span>
+                        </div>
+                        <div className="border-t border-border pt-1 flex justify-between text-sm">
+                          <span className="font-black">Due Date</span>
+                          <span className="font-black text-orange-600">{due.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
+              </div>
+            )}
             
+            <div className="bg-muted/50 p-4 rounded-3xl border border-border">
+              <div className="flex items-center justify-between mb-3">
+                <label className="text-xs font-black uppercase text-gray-600 dark:text-gray-400">Discount</label>
+                <label className="relative inline-flex cursor-pointer items-center">
+                  <input
+                    type="checkbox"
+                    className="peer sr-only"
+                    checked={applyDiscount}
+                    onChange={() => {
+                      setApplyDiscount(!applyDiscount);
+                      if (applyDiscount) setDiscountPercent(0);
+                    }}
+                  />
+                  <div className="peer h-6 w-11 rounded-full border bg-gray-200 after:absolute after:left-0.5 after:top-0.5 after:h-5 after:w-5 after:rounded-full after:border after:border-gray-300 after:bg-white after:transition-all after:content-[''] peer-checked:bg-primary peer-checked:after:translate-x-5 peer-checked:after:border-white dark:border-gray-600 dark:bg-gray-700 dark:after:bg-gray-400"></div>
+                </label>
+              </div>
+              {applyDiscount && (
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 mb-1">Discount Percentage</label>
+                    <div className="relative">
+                      <Input
+                        type="number"
+                        className="h-10 text-center text-lg font-black bg-card rounded-xl"
+                        placeholder="0"
+                        min={0}
+                        max={100}
+                        value={discountPercent || ''}
+                        onChange={(e) => setDiscountPercent(Math.min(100, Math.max(0, parseInt(e.target.value) || 0)))}
+                      />
+                      <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm font-bold text-muted-foreground">%</span>
+                    </div>
+                  </div>
+                  <div className="bg-background rounded-xl p-3 space-y-1">
+                    <div className="flex justify-between text-xs">
+                      <span className="text-muted-foreground">Original</span>
+                      <span className="font-bold">{formatPrice(calculateTotal())}</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-muted-foreground">Discount</span>
+                      <span className="font-bold text-red-500">-{formatPrice(parseFloat((calculateTotal() * discountPercent / 100).toFixed(2)))}</span>
+                    </div>
+                    <div className="border-t border-border pt-1 flex justify-between text-sm">
+                      <span className="font-black">Final</span>
+                      <span className="font-black text-green-600">{formatPrice(parseFloat((calculateTotal() - (calculateTotal() * discountPercent / 100)).toFixed(2)))}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="bg-muted/50 p-4 rounded-3xl border border-border">
+              <label className="block text-xs font-black uppercase text-gray-600 dark:text-gray-400 mb-2 text-center">Customer Name (optional)</label>
+              <Input
+                type="text"
+                className="h-12 text-center text-base font-bold bg-card rounded-2xl"
+                placeholder="e.g. Humphrey Bogart"
+                value={customerName}
+                onChange={(e) => setCustomerName(e.target.value)}
+              />
+            </div>
+
             <div className="flex gap-4">
               <Button variant="ghost" className="flex-1 h-14 rounded-2xl font-bold uppercase" onClick={() => setIsPaymentModalOpen(false)}>Back</Button>
               <Button className="flex-[2] h-14 rounded-2xl font-black uppercase" onClick={completeTransaction}>Finalize</Button>
@@ -743,13 +931,28 @@ export default function CashierPOS() {
                   <p className="text-gray-500 text-xs mt-2 italic whitespace-pre-wrap">{settings.receipt_header}</p>
                 )}
               </div>
-              <div className={`grid ${receiptData.referenceNumber ? 'grid-cols-3' : 'grid-cols-2'} gap-4 border-y border-dashed border-gray-200 py-6 mb-8 text-xs`}>
+              <div className={`grid ${receiptData.paymentMethod === 'term' ? 'grid-cols-3' : receiptData.referenceNumber ? 'grid-cols-3' : 'grid-cols-2'} gap-4 border-y border-dashed border-gray-200 py-6 mb-8 text-xs`}>
                 <div><p className="font-black text-gray-400 uppercase">Order Ref</p><p className="font-mono font-bold">{receiptData.id.substring(0, 8).toUpperCase()}</p></div>
-                {receiptData.referenceNumber && (
+                {receiptData.paymentMethod === 'term' ? (
+                  <div className="text-center"><p className="font-black text-gray-400 uppercase">Full Amount</p><p className="font-mono font-bold">{formatPrice(receiptData.total)}</p></div>
+                ) : receiptData.referenceNumber ? (
                   <div className="text-center"><p className="font-black text-gray-400 uppercase">Payment Ref</p><p className="font-mono font-bold uppercase">{receiptData.referenceNumber}</p></div>
-                )}
+                ) : null}
                 <div className="text-right"><p className="font-black text-gray-400 uppercase">Method</p><Badge className="text-[8px] font-black uppercase h-4 px-1.5">{receiptData.paymentMethod}</Badge></div>
               </div>
+
+              {receiptData.paymentMethod === 'term' && (
+                <div className="bg-orange-50 border border-orange-100 rounded-2xl p-4 mb-8 flex justify-between items-center">
+                  <div>
+                    <p className="text-[10px] font-black text-orange-700 uppercase">Amount Due</p>
+                    <p className="text-xl font-black text-orange-700">{formatPrice(receiptData.remainingBalance || receiptData.total)}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[10px] font-black text-orange-700 uppercase">Due Date</p>
+                    <p className="text-base font-black text-orange-700">{new Date(receiptData.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p>
+                  </div>
+                </div>
+              )}
 
               {/* Editable Fields for Receipt */}
               <div className="grid grid-cols-3 gap-2 mb-8">
@@ -862,7 +1065,7 @@ export default function CashierPOS() {
           )}
         </Modal>
 
-        <style jsx global>{`
+        <style jsx={true} global={true}>{`
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
       `}</style>
@@ -879,6 +1082,9 @@ export default function CashierPOS() {
             paymentMethod={receiptData.paymentMethod}
             amountReceived={receiptData.amountReceived}
             change={receiptData.change}
+            downPayment={receiptData.downPayment}
+            remainingBalance={receiptData.remainingBalance}
+            dueDate={receiptData.dueDate}
             storeName={settings?.store_name}
             storeAddress={settings?.store_address}
             storePhone={settings?.store_phone}
@@ -888,6 +1094,9 @@ export default function CashierPOS() {
             orNumber={orNumber}
             receiptHeader={settings?.receipt_header}
             receiptFooter={settings?.receipt_footer}
+            originalTotal={receiptData.originalTotal}
+            discountPercent={receiptData.discountPercent}
+            discountAmount={receiptData.discountAmount}
             taxRate={settings?.tax_rate}
             showSignatures={showSignatures}
           />

@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { useCurrency } from '@/context/CurrencyContext';
-import { Loader2, Printer, Calendar, Banknote, CreditCard, Wallet, FileText } from 'lucide-react';
+import { Loader2, Printer, Calendar, Banknote, CreditCard, Wallet, FileText, CalendarDays } from 'lucide-react';
 
 interface DailyReportModalProps {
   isOpen: boolean;
@@ -21,6 +21,7 @@ export function DailyReportModal({ isOpen, onClose, cashierId, cashierName }: Da
     cashAmount: 0,
     cardAmount: 0,
     mobileAmount: 0,
+    termAmount: 0,
     transactionCount: 0
   });
 
@@ -52,12 +53,13 @@ export function DailyReportModal({ isOpen, onClose, cashierId, cashierName }: Da
       if (data) {
         setTransactions(data);
         
-        let total = 0, cash = 0, card = 0, mobile = 0;
+        let total = 0, cash = 0, card = 0, mobile = 0, term = 0;
         data.forEach(tx => {
           total += tx.total_amount;
           if (tx.payment_method === 'cash') cash += tx.total_amount;
           if (tx.payment_method === 'card') card += tx.total_amount;
           if (tx.payment_method === 'mobile') mobile += tx.total_amount;
+          if (tx.payment_method === 'term') term += tx.total_amount;
         });
 
         setSummary({
@@ -65,6 +67,7 @@ export function DailyReportModal({ isOpen, onClose, cashierId, cashierName }: Da
           cashAmount: cash,
           cardAmount: card,
           mobileAmount: mobile,
+          termAmount: term,
           transactionCount: data.length
         });
       }
@@ -129,7 +132,7 @@ export function DailyReportModal({ isOpen, onClose, cashierId, cashierName }: Da
                 <p className="text-xs text-gray-400 mt-1">{new Date().toLocaleString('en-US', { month: 'long', day: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })}</p>
               </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
                 <div className="bg-gray-50 border p-4 rounded-xl text-center">
                   <p className="text-xs font-bold text-gray-500 uppercase">Gross Sales</p>
                   <p className="text-lg font-black text-primary truncate mt-1">{formatPrice(summary.totalAmount)}</p>
@@ -141,6 +144,10 @@ export function DailyReportModal({ isOpen, onClose, cashierId, cashierName }: Da
                 <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl text-center">
                   <p className="text-xs font-bold text-blue-700 uppercase">Card</p>
                   <p className="text-lg font-black text-blue-700 truncate mt-1">{formatPrice(summary.cardAmount)}</p>
+                </div>
+                <div className="bg-orange-50 border border-orange-100 p-4 rounded-xl text-center">
+                  <p className="text-xs font-bold text-orange-700 uppercase">Term</p>
+                  <p className="text-lg font-black text-orange-700 truncate mt-1">{summary.termAmount > 0 ? formatPrice(summary.termAmount) : '₱0.00'}</p>
                 </div>
                 <div className="bg-purple-50 border border-purple-100 p-4 rounded-xl text-center">
                   <p className="text-xs font-bold text-purple-700 uppercase">Trans (Total)</p>

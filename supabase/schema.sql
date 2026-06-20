@@ -53,6 +53,17 @@ CREATE TABLE activity_logs (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Customers table
+CREATE TABLE customers (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name TEXT NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Add customer_id to transactions
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS customer_id UUID REFERENCES customers(id);
+
 -- Insert sample data
 -- Sample users
 INSERT INTO users (email, password, role) VALUES 
@@ -66,3 +77,9 @@ INSERT INTO products (name, description, price, category, stock_quantity, barcod
 ('USB-C Cable', 'Fast charging USB-C cable, 2m length', 12.99, 'Accessories', 75, '345678901234'),
 ('Bluetooth Speaker', 'Portable Bluetooth speaker with excellent sound quality', 79.99, 'Electronics', 30, '456789012345'),
 ('Laptop Stand', 'Adjustable aluminum laptop stand', 45.99, 'Accessories', 15, '567890123456');
+
+-- Sample customers
+INSERT INTO customers (name) VALUES
+('Humphrey Bogart'),
+('Audrey Hepburn'),
+('Marlon Brando');

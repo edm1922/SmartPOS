@@ -462,6 +462,47 @@ export const supabaseDB = {
     }
   },
 
+  async getCustomers() {
+    try {
+      if (process.env.NODE_ENV === 'test') {
+        return { data: [], error: null };
+      }
+
+      const { data, error } = await supabase
+        .from('customers')
+        .select('*')
+        .order('name', { ascending: true });
+
+      const errorMessage = handleSupabaseError(error, 'fetch customers');
+      if (errorMessage) throw new Error(errorMessage);
+
+      return { data, error: null };
+    } catch (error: any) {
+      return { data: null, error: error.message };
+    }
+  },
+
+  async getCustomerTransactions(customerId: string) {
+    try {
+      if (process.env.NODE_ENV === 'test') {
+        return { data: [], error: null };
+      }
+
+      const { data, error } = await supabase
+        .from('transactions')
+        .select('*')
+        .eq('customer_id', customerId)
+        .order('created_at', { ascending: true });
+
+      const errorMessage = handleSupabaseError(error, 'fetch customer transactions');
+      if (errorMessage) throw new Error(errorMessage);
+
+      return { data, error: null };
+    } catch (error: any) {
+      return { data: null, error: error.message };
+    }
+  },
+
   async resetApplicationData() {
     try {
       // Return early if we're in a test environment

@@ -22,7 +22,14 @@ export interface Transaction {
   id: string;
   cashier_id: string;
   total_amount: number;
-  payment_method: 'cash' | 'card' | 'mobile';
+  payment_method: string;
+  discount_type?: string | null;
+  discount_value?: number;
+  discount_amount?: number;
+  down_payment?: number;
+  term_remaining_balance?: number;
+  term_due_date?: string;
+  term_status?: string;
   status: 'completed' | 'cancelled' | 'pending';
   created_at: string;
 }
@@ -34,6 +41,13 @@ export interface TransactionItem {
   quantity: number;
   price: number;
   created_at: string;
+}
+
+export interface Customer {
+  id: string;
+  name: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface ActivityLog {

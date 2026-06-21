@@ -30,6 +30,7 @@ export interface Transaction {
   term_remaining_balance?: number;
   term_due_date?: string;
   term_status?: string;
+  term_paid_amount?: number;
   status: 'completed' | 'cancelled' | 'pending';
   created_at: string;
 }
@@ -48,6 +49,24 @@ export interface Customer {
   name: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface TermPayment {
+  id: string;
+  customer_id: string;
+  cashier_id: string;
+  amount: number;
+  payment_method: string;
+  notes?: string;
+  created_at: string;
+}
+
+export interface TermPaymentAllocation {
+  id: string;
+  term_payment_id: string;
+  transaction_id: string;
+  amount: number;
+  created_at: string;
 }
 
 export interface ActivityLog {

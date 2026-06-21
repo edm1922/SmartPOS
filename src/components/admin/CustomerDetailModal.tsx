@@ -15,7 +15,8 @@ import {
   DollarSign,
   Smartphone,
   CalendarDays,
-  AlertCircle
+  AlertCircle,
+  HandCoins
 } from 'lucide-react';
 
 interface Customer {
@@ -30,6 +31,18 @@ interface CustomerTransaction {
   payment_method: string;
   status: string;
   created_at: string;
+  term_remaining_balance?: number;
+  term_paid_amount?: number;
+  term_due_date?: string;
+  term_status?: string;
+}
+
+interface TermPaymentRecord {
+  id: string;
+  amount: number;
+  payment_method: string;
+  notes?: string;
+  created_at: string;
 }
 
 interface CustomerDetailModalProps {
@@ -41,6 +54,7 @@ interface CustomerDetailModalProps {
 export function CustomerDetailModal({ customer, isOpen, onClose }: CustomerDetailModalProps) {
   const { formatPrice } = useCurrency();
   const [transactions, setTransactions] = useState<CustomerTransaction[]>([]);
+  const [termPayments, setTermPayments] = useState<TermPaymentRecord[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -61,6 +75,14 @@ export function CustomerDetailModal({ customer, isOpen, onClose }: CustomerDetai
 
       if (error) throw error;
       setTransactions(data || []);
+
+      const { data: payments, error: paymentsError } = await supabase
+        .from('term_payments')
+        .select('id, amount, payment_method, notes, created_at')
+        .eq('customer_id', customer.id)
+        .order('created_at', { ascending: true });
+      if (paymentsError) throw paymentsError;
+      setTermPayments(payments || []);
     } catch (error) {
       console.error('Error fetching customer transactions:', error);
     } finally {
@@ -73,12 +95,20 @@ export function CustomerDetailModal({ customer, isOpen, onClose }: CustomerDetai
   const firstTransaction = transactions.length > 0 ? transactions[0] : null;
   const latestTransaction = transactions.length > 0 ? transactions[transactions.length - 1] : null;
 
+  const outstandingTerm = transactions
+    .filter(t => t.payment_method === 'term')
+    .reduce((sum, t) => {
+      const owed = (t.term_remaining_balance || t.total_amount) - (t.term_paid_amount || 0);
+      return sum + Math.max(0, owed);
+    }, 0);
+
   const paymentIcon = (method: string) => {
     switch (method) {
       case 'cash': return <DollarSign className="h-3.5 w-3.5" />;
       case 'card': return <CreditCard className="h-3.5 w-3.5" />;
       case 'mobile': return <Smartphone className="h-3.5 w-3.5" />;
       case 'term': return <CalendarDays className="h-3.5 w-3.5" />;
+      case 'term_payment': return <HandCoins className="h-3.5 w-3.5" />;
       default: return <DollarSign className="h-3.5 w-3.5" />;
     }
   };
@@ -157,6 +187,12 @@ export function CustomerDetailModal({ customer, isOpen, onClose }: CustomerDetai
                 {latestTransaction ? new Date(latestTransaction.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : 'N/A'}
               </p>
             </div>
+            {outstandingTerm > 0 && (
+              <div className="p-4 rounded-xl bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/30">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-red-600 dark:text-red-400">Outstanding Term</p>
+                <p className="text-xl font-black text-red-600 dark:text-red-400 mt-1">{formatPrice(outstandingTerm)}</p>
+              </div>
+            )}
           </div>
         )}
 
@@ -233,6 +269,46 @@ export function CustomerDetailModal({ customer, isOpen, onClose }: CustomerDetai
             </div>
           )}
         </div>
+
+        {termPayments.length > 0 && (
+          <div>
+            <h4 className="text-sm font-bold flex items-center gap-2 mb-3">
+              <HandCoins className="h-4 w-4 text-orange-500" />
+              Term Payment History
+            </h4>
+            <div className="overflow-x-auto rounded-xl border border-gray-100 dark:border-gray-700">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 dark:bg-gray-800/50 border-b">
+                  <tr>
+                    <th className="text-left px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Date</th>
+                    <th className="text-left px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Amount Paid</th>
+                    <th className="text-left px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Method</th>
+                    <th className="text-left px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Notes</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                  {termPayments.map((p) => (
+                    <tr key={p.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition-colors">
+                      <td className="px-4 py-3 text-xs font-medium text-gray-900 dark:text-white">
+                        {new Date(p.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+                      </td>
+                      <td className="px-4 py-3 text-xs font-black text-green-600">
+                        {formatPrice(Number(p.amount))}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="inline-flex items-center gap-1 text-xs capitalize text-muted-foreground">
+                          {paymentIcon('term_payment')}
+                          {p.payment_method}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-xs text-muted-foreground">{p.notes || '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
     </Modal>
   );

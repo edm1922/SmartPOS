@@ -19,7 +19,8 @@ import {
   ArrowUpRight,
   CreditCard,
   Banknote,
-  CalendarDays
+  CalendarDays,
+  HandCoins
 } from 'lucide-react';
 
 interface Transaction {
@@ -159,6 +160,7 @@ export default function Reports() {
       case 'gcash':
       case 'card': return <CreditCard className="h-4 w-4 mr-1" />;
       case 'term': return <CalendarDays className="h-4 w-4 mr-1" />;
+      case 'term_payment': return <HandCoins className="h-4 w-4 mr-1" />;
       default: return <Wallet className="h-4 w-4 mr-1" />;
     }
   };

@@ -39,7 +39,10 @@ import {
   Landmark,
   CalendarDays,
   Check,
-  FileText
+  FileText,
+  HandCoins,
+  Banknote,
+  ChevronDown
 } from 'lucide-react';
 import { PrintableReceipt } from '@/components/ui/PrintableReceipt';
 import { DailyReportModal } from '@/components/cashier/DailyReportModal';
@@ -87,6 +90,17 @@ export default function CashierPOS() {
   const [tin, setTin] = useState('');
   const [orNumber, setOrNumber] = useState('');
   const [showSignatures, setShowSignatures] = useState(true);
+  const [isReceivePaymentOpen, setIsReceivePaymentOpen] = useState(false);
+  const [rpCustomerName, setRpCustomerName] = useState('');
+  const [rpCustomers, setRpCustomers] = useState<{id: string; name: string}[]>([]);
+  const [rpSelectedCustomer, setRpSelectedCustomer] = useState<{id: string; name: string} | null>(null);
+  const [rpAmount, setRpAmount] = useState('');
+  const [rpPaymentMethod, setRpPaymentMethod] = useState<'cash' | 'card' | 'mobile' | 'cheque'>('cash');
+  const [rpReferenceNumber, setRpReferenceNumber] = useState('');
+  const [rpOutstanding, setRpOutstanding] = useState<any[]>([]);
+  const [rpLoading, setRpLoading] = useState(false);
+  const [rpPreview, setRpPreview] = useState<Array<{tx: any; allocated: number}>>([]);
+  const [rpNotes, setRpNotes] = useState('');
   const barcodeInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -542,6 +556,145 @@ export default function CashierPOS() {
     window.print();
   };
 
+  const searchRpCustomers = async (query: string) => {
+    if (!query.trim()) { setRpCustomers([]); return; }
+    try {
+      const { data, error } = await supabase
+        .from('customers')
+        .select('id, name')
+        .ilike('name', `%${query}%`)
+        .order('name')
+        .limit(10);
+      if (error) throw error;
+      setRpCustomers(data || []);
+    } catch (err) {
+      console.error('Error searching customers:', err);
+    }
+  };
+
+  const selectRpCustomer = async (customer: { id: string; name: string }) => {
+    setRpSelectedCustomer(customer);
+    setRpCustomerName(customer.name);
+    setRpCustomers([]);
+    setRpAmount('');
+    setRpPreview([]);
+    try {
+      const { data, error } = await supabase
+        .from('transactions')
+        .select('id, total_amount, term_remaining_balance, term_paid_amount, created_at')
+        .eq('customer_id', customer.id)
+        .eq('payment_method', 'term')
+        .order('created_at', { ascending: true });
+      if (error) throw error;
+      const outstanding = (data || []).filter(tx => {
+        const paid = tx.term_paid_amount || 0;
+        const total = tx.term_remaining_balance || tx.total_amount;
+        return paid < total;
+      });
+      setRpOutstanding(outstanding);
+    } catch (err) {
+      console.error('Error fetching outstanding term transactions:', err);
+    }
+  };
+
+  const recalcRpPreview = (amount: string) => {
+    const amt = parseFloat(amount) || 0;
+    let remaining = amt;
+    const preview: Array<{tx: any; allocated: number}> = [];
+    for (const tx of rpOutstanding) {
+      if (remaining <= 0) break;
+      const owed = (tx.term_remaining_balance || tx.total_amount) - (tx.term_paid_amount || 0);
+      const alloc = Math.min(remaining, owed);
+      preview.push({ tx, allocated: alloc });
+      remaining -= alloc;
+    }
+    setRpPreview(preview);
+  };
+
+  const completeTermPayment = async () => {
+    try {
+      setError(null);
+      if (!rpSelectedCustomer) throw new Error('Please select a customer.');
+      const amount = parseFloat(rpAmount);
+      if (!amount || amount <= 0) throw new Error('Please enter a valid payment amount.');
+      if (['card', 'mobile', 'cheque'].includes(rpPaymentMethod) && !rpReferenceNumber.trim()) {
+        throw new Error(`A reference number is required for ${rpPaymentMethod} payments.`);
+      }
+
+      const totalOwed = rpOutstanding.reduce((sum, tx) => {
+        return sum + ((tx.term_remaining_balance || tx.total_amount) - (tx.term_paid_amount || 0));
+      }, 0);
+      if (amount > totalOwed) throw new Error(`Payment amount (${formatPrice(amount)}) exceeds outstanding balance (${formatPrice(totalOwed)}).`);
+
+      setSuccessMessage('Processing term payment...');
+
+      const cashierId = typeof window !== 'undefined' ? sessionStorage.getItem('cashier_id') : null;
+      if (!cashierId) throw new Error('Cashier information not found.');
+
+      const { data: paymentData, error: paymentError } = await supabase
+        .from('term_payments')
+        .insert({
+          customer_id: rpSelectedCustomer.id,
+          cashier_id: cashierId,
+          amount: amount,
+          payment_method: rpPaymentMethod,
+          reference_number: ['card', 'mobile', 'cheque'].includes(rpPaymentMethod) ? rpReferenceNumber : null,
+          notes: rpNotes.trim() || null
+        })
+        .select()
+        .single();
+      if (paymentError) throw paymentError;
+
+      let remaining = amount;
+      const perTxAlloc: Record<string, number> = {};
+      for (const tx of rpOutstanding) {
+        if (remaining <= 0) break;
+        const owed = (Number(tx.term_remaining_balance) || Number(tx.total_amount)) - (Number(tx.term_paid_amount) || 0);
+        const alloc = Math.min(remaining, owed);
+        perTxAlloc[tx.id] = alloc;
+
+        const { error: allocError } = await supabase
+          .from('term_payment_allocations')
+          .insert({
+            term_payment_id: paymentData.id,
+            transaction_id: tx.id,
+            amount: alloc
+          });
+        if (allocError) throw allocError;
+
+        const newPaid = (Number(tx.term_paid_amount) || 0) + alloc;
+        const { error: updateError } = await supabase
+          .rpc('update_transaction_term_paid_amount', {
+            p_transaction_id: tx.id,
+            p_term_paid_amount: newPaid
+          });
+        if (updateError) throw updateError;
+
+        remaining -= alloc;
+      }
+
+      setSuccessMessage(`Payment of ${formatPrice(amount)} received from ${rpSelectedCustomer.name}!`);
+      setRpAmount('');
+      setRpPreview([]);
+      setRpReferenceNumber('');
+      setRpNotes('');
+      setRpOutstanding(prev =>
+        prev
+          .map(tx => ({
+            ...tx,
+            term_paid_amount: (Number(tx.term_paid_amount) || 0) + (perTxAlloc[tx.id] || 0)
+          }))
+          .filter(tx =>
+            (Number(tx.term_paid_amount) || 0) < (Number(tx.term_remaining_balance) || Number(tx.total_amount))
+          )
+      );
+      setTimeout(() => setSuccessMessage(''), 5000);
+    } catch (error: any) {
+      console.error('Term payment error:', error);
+      setError(error.message || 'Term payment failed.');
+    }
+  };
+
   const filteredProducts = useMemo(() => {
     return products.filter(product => {
       const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -603,6 +756,7 @@ export default function CashierPOS() {
             <ThemeToggle />
             <div className="h-8 w-px bg-border mx-2" />
             <Button onClick={() => setIsDailyReportOpen(true)} variant="outline" size="sm" className="font-bold text-xs flex items-center gap-2 border-dashed border-primary/50 text-primary hover:bg-primary/10"><FileText className="h-4 w-4 hidden md:block" /> DAILY REPORT</Button>
+            <Button onClick={() => {setIsReceivePaymentOpen(true); setRpCustomerName(''); setRpSelectedCustomer(null); setRpAmount(''); setRpOutstanding([]); setRpPreview([]); setRpNotes('');}} variant="outline" size="sm" className="font-bold text-xs flex items-center gap-2 border-dashed border-orange-500/50 text-orange-600 hover:bg-orange-50"><HandCoins className="h-4 w-4 hidden md:block" /> RECEIVE</Button>
             <Button onClick={() => setIsSettingsModalOpen(true)} variant="ghost" size="sm" className="font-bold text-xs"><Settings className="h-4 w-4" /></Button>
             <Button onClick={handleSignOut} variant="destructive" size="sm" className="font-bold text-xs flex items-center gap-2"><LogOut className="h-4 w-4" /> LOCK</Button>
           </div>
@@ -1063,6 +1217,171 @@ export default function CashierPOS() {
               </div>
             </div>
           )}
+        </Modal>
+
+        <Modal isOpen={isReceivePaymentOpen} onClose={() => setIsReceivePaymentOpen(false)}>
+          <div className="p-6 max-w-lg mx-auto">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="h-10 w-10 rounded-2xl bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
+                <HandCoins className="h-5 w-5 text-orange-600" />
+              </div>
+              <div>
+                <h2 className="text-lg font-black">Receive Term Payment</h2>
+                <p className="text-xs text-muted-foreground font-bold">Record an incoming payment for outstanding term transactions</p>
+              </div>
+            </div>
+
+            <div className="space-y-5">
+              <div>
+                <label className="block text-xs font-bold text-muted-foreground uppercase mb-1.5">Customer</label>
+                <div className="relative">
+                  <Input
+                    placeholder="Search customer name..."
+                    value={rpCustomerName}
+                    onChange={(e) => {
+                      setRpCustomerName(e.target.value);
+                      searchRpCustomers(e.target.value);
+                      setRpSelectedCustomer(null);
+                      setRpOutstanding([]);
+                      setRpPreview([]);
+                    }}
+                    className="h-10 font-bold"
+                  />
+                  {rpCustomers.length > 0 && !rpSelectedCustomer && (
+                    <div className="absolute top-full left-0 right-0 bg-popover border border-border rounded-xl shadow-xl z-50 mt-1 max-h-48 overflow-y-auto">
+                      {rpCustomers.map((c) => (
+                        <button
+                          key={c.id}
+                          className="w-full text-left px-4 py-3 text-sm font-bold hover:bg-muted transition-colors border-b border-border last:border-0"
+                          onClick={() => selectRpCustomer(c)}
+                        >
+                          {c.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {rpOutstanding.length > 0 && (
+                <div className="bg-orange-50 dark:bg-orange-900/10 border border-orange-200 dark:border-orange-800 rounded-2xl p-4 space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs font-bold text-orange-700 uppercase">Outstanding Balance</span>
+                    <span className="text-xl font-black text-orange-700">
+                      {formatPrice(rpOutstanding.reduce((sum, tx) => sum + ((tx.term_remaining_balance || tx.total_amount) - (tx.term_paid_amount || 0)), 0))}
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-orange-600 font-bold">{rpOutstanding.length} transaction{rpOutstanding.length !== 1 ? 's' : ''} awaiting payment</p>
+                </div>
+              )}
+
+              {rpOutstanding.length === 0 && rpSelectedCustomer && (
+                <div className="bg-green-50 dark:bg-green-900/10 border border-green-200 dark:border-green-800 rounded-2xl p-4">
+                  <p className="text-sm font-bold text-green-700 text-center">No outstanding term transactions.</p>
+                </div>
+              )}
+
+              {rpOutstanding.length > 0 && (
+                <>
+                  <div>
+                    <label className="block text-xs font-bold text-muted-foreground uppercase mb-1.5">Payment Amount</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-lg font-black text-muted-foreground">₱</span>
+                      <Input
+                        type="number"
+                        placeholder="0.00"
+                        value={rpAmount}
+                        onChange={(e) => { setRpAmount(e.target.value); recalcRpPreview(e.target.value); }}
+                        className="h-12 pl-8 text-lg font-black"
+                        step="0.01"
+                        min="0"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-muted-foreground uppercase mb-1.5">Payment Method</label>
+                    <div className="grid grid-cols-4 gap-2">
+                      {(['cash', 'card', 'mobile', 'cheque'] as const).map(m => (
+                        <button
+                          key={m}
+                          onClick={() => setRpPaymentMethod(m)}
+                          className={`py-2 rounded-xl border-2 text-xs font-black uppercase transition-all ${
+                            rpPaymentMethod === m
+                              ? 'bg-orange-500 border-orange-500 text-white shadow-lg'
+                              : 'bg-card border-border text-muted-foreground hover:border-orange-500/50'
+                          }`}
+                        >
+                          {m === 'cash' ? '💵' : m === 'card' ? '💳' : m === 'mobile' ? '📱' : '📄'} {m}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {['card', 'mobile', 'cheque'].includes(rpPaymentMethod) && (
+                    <div>
+                      <label className="block text-xs font-bold text-muted-foreground uppercase mb-1.5">Reference Number</label>
+                      <Input
+                        placeholder="Reference #"
+                        value={rpReferenceNumber}
+                        onChange={(e) => setRpReferenceNumber(e.target.value)}
+                        className="h-10 font-bold"
+                      />
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-xs font-bold text-muted-foreground uppercase mb-1.5">Notes <span className="text-muted-foreground/50">(optional)</span></label>
+                    <Input
+                      placeholder="Payment notes..."
+                      value={rpNotes}
+                      onChange={(e) => setRpNotes(e.target.value)}
+                      className="h-10 font-bold"
+                    />
+                  </div>
+
+                  {rpPreview.length > 0 && (
+                    <div>
+                      <label className="block text-xs font-bold text-muted-foreground uppercase mb-1.5">Allocation Preview <span className="text-muted-foreground/50">(FIFO)</span></label>
+                      <div className="bg-muted/50 rounded-2xl p-3 space-y-2">
+                        {rpPreview.map((p, i) => (
+                          <div key={i} className="flex justify-between items-center py-1.5 border-b border-border last:border-0">
+                            <div className="flex items-center gap-2">
+                              <CheckCircle2 className="h-4 w-4 text-green-600" />
+                              <div>
+                                <p className="text-xs font-bold text-foreground">
+                                  #{p.tx.id.slice(0, 8)} <span className="text-muted-foreground">—</span> {new Date(p.tx.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                </p>
+                                <p className="text-[10px] text-muted-foreground font-bold">
+                                  Owed: {formatPrice((p.tx.term_remaining_balance || p.tx.total_amount) - (p.tx.term_paid_amount || 0))}
+                                </p>
+                              </div>
+                            </div>
+                            <span className="text-sm font-black text-green-600">{formatPrice(p.allocated)}</span>
+                          </div>
+                        ))}
+                        <div className="flex justify-between items-center pt-2 border-t-2 border-dashed border-border">
+                          <span className="text-xs font-bold uppercase text-muted-foreground">Total Applied</span>
+                          <span className="text-base font-black">{formatPrice(rpPreview.reduce((sum, p) => sum + p.allocated, 0))}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            <div className="flex gap-4 mt-8">
+              <Button variant="ghost" className="flex-1 h-12 rounded-2xl font-bold uppercase" onClick={() => setIsReceivePaymentOpen(false)}>Cancel</Button>
+              <Button
+                className="flex-[2] h-12 rounded-2xl font-black uppercase bg-orange-500 hover:bg-orange-600"
+                onClick={completeTermPayment}
+                disabled={!rpSelectedCustomer || rpOutstanding.length === 0 || !rpAmount || parseFloat(rpAmount) <= 0}
+              >
+                <HandCoins className="h-5 w-5 mr-2" /> Confirm Payment
+              </Button>
+            </div>
+          </div>
         </Modal>
 
         <style jsx={true} global={true}>{`

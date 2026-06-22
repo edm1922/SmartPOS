@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { useRouter, usePathname } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
@@ -27,7 +27,6 @@ export function AdminNavbar() {
     const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
     const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
     const searchRef = useRef<HTMLDivElement>(null);
-    const router = useRouter();
     const pathname = usePathname();
 
     useEffect(() => {
@@ -80,8 +79,15 @@ export function AdminNavbar() {
     };
 
     const handleSignOut = async () => {
-        await supabase.auth.signOut();
-        router.push('/');
+        // Clear all Supabase auth cookies
+        document.cookie.split('; ').forEach(c => {
+            const name = c.split('=')[0];
+            if (name.startsWith('sb-') || name === 'supabase-auth-token') {
+                document.cookie = `${name}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax`;
+            }
+        });
+        // Full page reload to clear all client state and re-run middleware
+        window.location.href = '/';
     };
 
     return (

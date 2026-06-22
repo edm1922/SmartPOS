@@ -136,6 +136,29 @@ export function CustomerDetailModal({ customer, isOpen, onClose }: CustomerDetai
     URL.revokeObjectURL(url);
   };
 
+  const downloadTermPayments = () => {
+    if (termPayments.length === 0) return;
+
+    const headers = ['Date', 'Amount Paid', 'Method', 'Notes'];
+    const rows = termPayments.map(p => [
+      new Date(p.created_at).toLocaleDateString(),
+      formatPrice(Number(p.amount)),
+      p.payment_method,
+      p.notes || ''
+    ]);
+
+    const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${customer?.name || 'customer'}-term-payments.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   if (!customer) return null;
 
   return (
@@ -272,10 +295,20 @@ export function CustomerDetailModal({ customer, isOpen, onClose }: CustomerDetai
 
         {termPayments.length > 0 && (
           <div>
-            <h4 className="text-sm font-bold flex items-center gap-2 mb-3">
-              <HandCoins className="h-4 w-4 text-orange-500" />
-              Term Payment History
-            </h4>
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="text-sm font-bold flex items-center gap-2">
+                <HandCoins className="h-4 w-4 text-orange-500" />
+                Term Payment History
+              </h4>
+              <Button
+                onClick={downloadTermPayments}
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs gap-1.5"
+              >
+                <Download className="h-3.5 w-3.5" /> Download CSV
+              </Button>
+            </div>
             <div className="overflow-x-auto rounded-xl border border-gray-100 dark:border-gray-700">
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 dark:bg-gray-800/50 border-b">

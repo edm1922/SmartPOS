@@ -42,9 +42,11 @@ import {
   FileText,
   HandCoins,
   Banknote,
-  ChevronDown
+  ChevronDown,
+  Printer
 } from 'lucide-react';
 import { PrintableReceipt } from '@/components/ui/PrintableReceipt';
+import { PrintableTermReceipt } from '@/components/ui/PrintableTermReceipt';
 import { DailyReportModal } from '@/components/cashier/DailyReportModal';
 
 interface Product {
@@ -101,6 +103,8 @@ export default function CashierPOS() {
   const [rpLoading, setRpLoading] = useState(false);
   const [rpPreview, setRpPreview] = useState<Array<{tx: any; allocated: number}>>([]);
   const [rpNotes, setRpNotes] = useState('');
+  const [termReceiptData, setTermReceiptData] = useState<any>(null);
+  const [isTermReceiptOpen, setIsTermReceiptOpen] = useState(false);
   const barcodeInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -556,6 +560,10 @@ export default function CashierPOS() {
     window.print();
   };
 
+  const printTermReceipt = () => {
+    window.print();
+  };
+
   const searchRpCustomers = async (query: string) => {
     if (!query.trim()) { setRpCustomers([]); return; }
     try {
@@ -673,21 +681,38 @@ export default function CashierPOS() {
         remaining -= alloc;
       }
 
-      setSuccessMessage(`Payment of ${formatPrice(amount)} received from ${rpSelectedCustomer.name}!`);
+      setTermReceiptData({
+        id: paymentData.id,
+        customerName: rpSelectedCustomer.name,
+        amount: amount,
+        paymentMethod: rpPaymentMethod,
+        referenceNumber: ['card', 'mobile', 'cheque'].includes(rpPaymentMethod) ? rpReferenceNumber : null,
+        notes: rpNotes.trim() || null,
+        date: new Date().toISOString(),
+        cashierName: user?.cashier_username,
+        allocations: Object.entries(perTxAlloc).map(([txId, allocAmount]) => {
+          const tx = rpOutstanding.find(t => t.id === txId);
+          return {
+            transactionId: txId,
+            amount: allocAmount,
+            total: tx?.total_amount || 0
+          };
+        }),
+        remainingBalance: rpOutstanding.reduce((sum, tx) => {
+          const newPaid = (Number(tx.term_paid_amount) || 0) + (perTxAlloc[tx.id] || 0);
+          const total = Number(tx.term_remaining_balance) || Number(tx.total_amount);
+          return sum + Math.max(0, total - newPaid);
+        }, 0)
+      });
+      setIsReceivePaymentOpen(false);
+      setIsTermReceiptOpen(true);
+      setRpCustomerName('');
+      setRpSelectedCustomer(null);
       setRpAmount('');
+      setRpOutstanding([]);
       setRpPreview([]);
       setRpReferenceNumber('');
       setRpNotes('');
-      setRpOutstanding(prev =>
-        prev
-          .map(tx => ({
-            ...tx,
-            term_paid_amount: (Number(tx.term_paid_amount) || 0) + (perTxAlloc[tx.id] || 0)
-          }))
-          .filter(tx =>
-            (Number(tx.term_paid_amount) || 0) < (Number(tx.term_remaining_balance) || Number(tx.total_amount))
-          )
-      );
       setTimeout(() => setSuccessMessage(''), 5000);
     } catch (error: any) {
       console.error('Term payment error:', error);
@@ -1384,6 +1409,99 @@ export default function CashierPOS() {
           </div>
         </Modal>
 
+        <Modal isOpen={isTermReceiptOpen} onClose={() => setIsTermReceiptOpen(false)} title="Term Payment" size="md">
+          {termReceiptData && (
+            <div className="bg-white p-8 rounded-3xl text-gray-900 shadow-inner">
+              <div className="text-center mb-8">
+                <div className="h-12 w-12 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4 text-primary"><Receipt className="h-6 w-6" /></div>
+                <h2 className="text-2xl font-black uppercase">{settings?.store_name || 'SMART POS'}</h2>
+                {settings?.show_address_on_receipt && settings?.store_address && (
+                  <p className="text-gray-500 text-sm mt-1">{settings.store_address}</p>
+                )}
+                {settings?.show_phone_on_receipt && settings?.store_phone && (
+                  <p className="text-gray-500 text-sm">TEL: {settings.store_phone}</p>
+                )}
+                {settings?.receipt_header && (
+                  <p className="text-gray-500 text-xs mt-2 italic whitespace-pre-wrap">{settings.receipt_header}</p>
+                )}
+              </div>
+
+              <div className="grid grid-cols-3 gap-4 border-y border-dashed border-gray-200 py-6 mb-8 text-xs">
+                <div><p className="font-black text-gray-400 uppercase">Payment Ref</p><p className="font-mono font-bold">{termReceiptData.id.substring(0, 8).toUpperCase()}</p></div>
+                <div className="text-center"><p className="font-black text-gray-400 uppercase">Amount Paid</p><p className="font-mono font-bold">{formatPrice(termReceiptData.amount)}</p></div>
+                <div className="text-right"><p className="font-black text-gray-400 uppercase">Method</p><Badge className="text-[8px] font-black uppercase h-4 px-1.5">{termReceiptData.paymentMethod}</Badge></div>
+              </div>
+
+              <div className="bg-gray-50 p-6 rounded-2xl mb-8 space-y-2">
+                <div className="flex justify-between items-center text-gray-600">
+                  <span className="text-xs font-bold uppercase">Customer</span>
+                  <span className="font-bold text-gray-900">{termReceiptData.customerName}</span>
+                </div>
+                <div className="flex justify-between items-center text-gray-600">
+                  <span className="text-xs font-bold uppercase">Cashier</span>
+                  <span className="font-bold text-gray-900">{termReceiptData.cashierName || 'Staff'}</span>
+                </div>
+                <div className="flex justify-between items-center text-gray-600">
+                  <span className="text-xs font-bold uppercase">Date</span>
+                  <span className="font-bold text-gray-900">{new Date(termReceiptData.date).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                </div>
+                {termReceiptData.referenceNumber && (
+                  <div className="flex justify-between items-center text-gray-600">
+                    <span className="text-xs font-bold uppercase">Reference</span>
+                    <span className="font-bold text-gray-900">{termReceiptData.referenceNumber}</span>
+                  </div>
+                )}
+                {termReceiptData.notes && (
+                  <div className="flex justify-between items-center text-gray-600">
+                    <span className="text-xs font-bold uppercase">Notes</span>
+                    <span className="font-bold text-gray-900 italic">{termReceiptData.notes}</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="mb-8">
+                <table className="w-full border-collapse border border-gray-200 text-xs">
+                  <thead>
+                    <tr className="bg-gray-50 uppercase text-[9px] font-black text-gray-400">
+                      <th className="border border-gray-200 px-2 py-1 text-left">Transaction</th>
+                      <th className="border border-gray-200 px-2 py-1 text-right">Applied</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {termReceiptData.allocations.map((a: any, i: number) => (
+                      <tr key={i}>
+                        <td className="border border-gray-200 px-2 py-1 font-mono font-bold text-gray-800 text-[10px]">#{a.transactionId.substring(0, 8)}</td>
+                        <td className="border border-gray-200 px-2 py-1 text-right font-black text-green-600">{formatPrice(a.amount)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <p className="text-[9px] text-gray-400 font-bold mt-1">FIFO allocation — oldest transactions paid first</p>
+              </div>
+
+              <div className="bg-gray-50 p-6 rounded-2xl mb-8 space-y-3">
+                <div className="flex justify-between items-center text-gray-600">
+                  <span className="text-xs font-bold uppercase">Total Paid</span>
+                  <span className="font-bold text-green-600">{formatPrice(termReceiptData.amount)}</span>
+                </div>
+                <div className="border-t border-dashed border-gray-300 pt-3 flex justify-between items-center text-xl font-black text-gray-900">
+                  <span className="text-sm uppercase">Remaining Balance</span>
+                  <span>{formatPrice(termReceiptData.remainingBalance)}</span>
+                </div>
+              </div>
+
+              <div className="text-center text-xs text-gray-500 mb-6 whitespace-pre-wrap">
+                {settings?.receipt_footer || 'Thank you for your payment!'}
+              </div>
+
+              <div className="flex gap-4">
+                <Button variant="ghost" className="flex-1 h-12 rounded-2xl font-bold uppercase" onClick={() => setIsTermReceiptOpen(false)}>Close</Button>
+                <Button className="flex-[2] h-12 rounded-2xl font-black uppercase" onClick={printTermReceipt}><Printer className="h-4 w-4 mr-2" /> Print Ticket</Button>
+              </div>
+            </div>
+          )}
+        </Modal>
+
         <style jsx={true} global={true}>{`
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
@@ -1418,6 +1536,30 @@ export default function CashierPOS() {
             discountAmount={receiptData.discountAmount}
             taxRate={settings?.tax_rate}
             showSignatures={showSignatures}
+          />
+        )}
+      </div>
+
+      <div className="hidden print:block">
+        {termReceiptData && (
+          <PrintableTermReceipt
+            id={termReceiptData.id}
+            date={termReceiptData.date}
+            customerName={termReceiptData.customerName}
+            cashierName={termReceiptData.cashierName}
+            amount={termReceiptData.amount}
+            paymentMethod={termReceiptData.paymentMethod}
+            referenceNumber={termReceiptData.referenceNumber}
+            notes={termReceiptData.notes}
+            allocations={termReceiptData.allocations}
+            remainingBalance={termReceiptData.remainingBalance}
+            storeName={settings?.store_name}
+            storeAddress={settings?.store_address}
+            storePhone={settings?.store_phone}
+            receiptHeader={settings?.receipt_header}
+            receiptFooter={settings?.receipt_footer}
+            showAddressOnReceipt={settings?.show_address_on_receipt}
+            showPhoneOnReceipt={settings?.show_phone_on_receipt}
           />
         )}
       </div>

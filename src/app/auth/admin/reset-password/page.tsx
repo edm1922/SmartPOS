@@ -19,14 +19,38 @@ export default function ResetPassword() {
   const router = useRouter();
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (event === 'PASSWORD_RECOVERY') {
+    const handleRecovery = async () => {
+      const { searchParams } = new URL(window.location.href);
+      const code = searchParams.get('code');
+
+      if (code) {
+        const { error } = await supabase.auth.exchangeCodeForSession(code);
+        if (!error) {
           sessionReadyRef.current = true;
           setSessionReady(true);
+        } else {
+          console.error('Code exchange failed:', error);
+          setPageError('Failed to verify recovery link. Please try again.');
+        }
+      } else {
+        const hash = window.location.hash;
+        if (hash) {
+          const { data: { subscription } } = supabase.auth.onAuthStateChange(
+            async (event, session) => {
+              if (event === 'PASSWORD_RECOVERY') {
+                sessionReadyRef.current = true;
+                setSessionReady(true);
+              }
+            }
+          );
+          return () => subscription.unsubscribe();
+        } else {
+          setPageError('Invalid recovery link. Please request a new one.');
         }
       }
-    );
+    };
+
+    handleRecovery();
 
     const timeout = setTimeout(() => {
       if (!sessionReadyRef.current) {
@@ -34,10 +58,7 @@ export default function ResetPassword() {
       }
     }, 10000);
 
-    return () => {
-      subscription.unsubscribe();
-      clearTimeout(timeout);
-    };
+    return () => clearTimeout(timeout);
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {

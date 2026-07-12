@@ -43,10 +43,12 @@ import {
   HandCoins,
   Banknote,
   ChevronDown,
-  Printer
+  ChevronLeft,
+  ChevronRight,
+  Printer,
+  Users
 } from 'lucide-react';
 import { PrintableReceipt } from '@/components/ui/PrintableReceipt';
-import { PrintableTermReceipt } from '@/components/ui/PrintableTermReceipt';
 import { DailyReportModal } from '@/components/cashier/DailyReportModal';
 
 interface Product {
@@ -102,10 +104,29 @@ export default function CashierPOS() {
   const [rpOutstanding, setRpOutstanding] = useState<any[]>([]);
   const [rpLoading, setRpLoading] = useState(false);
   const [rpPreview, setRpPreview] = useState<Array<{tx: any; allocated: number}>>([]);
+  const [rpTxItems, setRpTxItems] = useState<Record<string, string[]>>({});
   const [rpNotes, setRpNotes] = useState('');
   const [termReceiptData, setTermReceiptData] = useState<any>(null);
   const [isTermReceiptOpen, setIsTermReceiptOpen] = useState(false);
+  const [printMode, setPrintMode] = useState<'sale' | 'term' | null>(null);
+  const [termCustSearch, setTermCustSearch] = useState('');
+  const [termCustResults, setTermCustResults] = useState<{id: string; name: string}[]>([]);
+  const [termCustSelected, setTermCustSelected] = useState<{id: string; name: string} | null>(null);
+  const [termCustOutstanding, setTermCustOutstanding] = useState(0);
+  const [isCustListOpen, setIsCustListOpen] = useState(false);
+  const [custListData, setCustListData] = useState<{id: string; name: string; total_outstanding: number; tx_count: number}[]>([]);
+  const [custListLoading, setCustListLoading] = useState(false);
+  const [custDetailSelected, setCustDetailSelected] = useState<{id: string; name: string} | null>(null);
+  const [custDetailLoading, setCustDetailLoading] = useState(false);
+  const [custDetailTransactions, setCustDetailTransactions] = useState<any[]>([]);
+  const [custDetailTotalOutstanding, setCustDetailTotalOutstanding] = useState(0);
   const barcodeInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const afterPrint = () => setPrintMode(null);
+    window.addEventListener('afterprint', afterPrint);
+    return () => window.removeEventListener('afterprint', afterPrint);
+  }, []);
 
   useEffect(() => {
     const checkUser = async () => {
@@ -442,8 +463,8 @@ export default function CashierPOS() {
         throw new Error(`A reference number is required for ${paymentMethod} payments.`);
       }
 
-      let customerId = null;
-      if (customerName.trim()) {
+      let customerId = termCustSelected?.id || null;
+      if (!customerId && customerName.trim()) {
         try {
           const { data: existingCustomer, error: lookupError } = await supabase
             .from('customers')
@@ -537,6 +558,9 @@ export default function CashierPOS() {
 
       setDeliveredTo(customerName);
       setCustomerName('');
+      setTermCustSelected(null);
+      setTermCustSearch('');
+      setTermCustOutstanding(0);
       setApplyDiscount(false);
       setDiscountPercent(0);
       setDownPaymentPercent(20);
@@ -545,6 +569,7 @@ export default function CashierPOS() {
       setAmountReceived('');
       setReferenceNumber('');
       setIsPaymentModalOpen(false);
+      setPrintMode('sale');
       setIsReceiptModalOpen(true);
       setTransactionComplete(true);
       setSuccessMessage('Transaction successful!');
@@ -557,11 +582,158 @@ export default function CashierPOS() {
   };
 
   const printReceipt = () => {
-    window.print();
+    setPrintMode('sale');
+    setTimeout(() => window.print(), 50);
+  };
+
+  const cancelTransaction = async () => {
+    if (!receiptData?.id) return;
+    try {
+      setIsReceiptModalOpen(false);
+      setPrintMode(null);
+      setSuccessMessage('Cancelling transaction...');
+      const { error } = await supabase.rpc('undo_transaction', {
+        p_transaction_id: receiptData.id
+      });
+      if (error) throw error;
+      setSuccessMessage('Transaction cancelled successfully.');
+      setTimeout(() => setSuccessMessage(null), 3000);
+      fetchProducts();
+    } catch (err: any) {
+      console.error('Cancel transaction error:', err);
+      setError('Failed to cancel transaction: ' + (err.message || 'Unknown error'));
+    }
   };
 
   const printTermReceipt = () => {
-    window.print();
+    setPrintMode('term');
+    setTimeout(() => window.print(), 50);
+  };
+
+  const cancelTermPayment = async () => {
+    if (!termReceiptData?.id) return;
+    try {
+      setIsTermReceiptOpen(false);
+      setSuccessMessage('Cancelling payment...');
+      const { error } = await supabase.rpc('undo_term_payment', {
+        p_payment_id: termReceiptData.id
+      });
+      if (error) throw error;
+      setSuccessMessage('Payment cancelled successfully.');
+      setTimeout(() => setSuccessMessage(null), 3000);
+    } catch (err: any) {
+      console.error('Cancel payment error:', err);
+      setError('Failed to cancel payment: ' + (err.message || 'Unknown error'));
+    }
+  };
+
+  const searchTermCustomer = async (query: string) => {
+    if (!query.trim()) { setTermCustResults([]); return; }
+    try {
+      const { data, error } = await supabase
+        .from('customers')
+        .select('id, name')
+        .ilike('name', `%${query}%`)
+        .order('name')
+        .limit(10);
+      if (error) throw error;
+      setTermCustResults(data || []);
+    } catch (err) {
+      console.error('Error searching customers:', err);
+    }
+  };
+
+  const selectTermCustomer = async (customer: { id: string; name: string }) => {
+    setTermCustSelected(customer);
+    setTermCustSearch(customer.name);
+    setTermCustResults([]);
+    try {
+      const { data, error } = await supabase
+        .from('transactions')
+        .select('term_remaining_balance, term_paid_amount')
+        .eq('customer_id', customer.id)
+        .eq('payment_method', 'term');
+      if (error) throw error;
+      const totalOwed = (data || []).reduce((sum, tx) => {
+        return sum + ((tx.term_remaining_balance || 0) - (tx.term_paid_amount || 0));
+      }, 0);
+      setTermCustOutstanding(Math.max(0, totalOwed));
+    } catch (err) {
+      console.error('Error fetching customer outstanding:', err);
+      setTermCustOutstanding(0);
+    }
+  };
+
+  const fetchCustList = async () => {
+    setCustListLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('customers')
+        .select('id, name');
+      if (error) throw error;
+      const result: {id: string; name: string; total_outstanding: number; tx_count: number}[] = [];
+      for (const c of data || []) {
+        const { data: txs } = await supabase
+          .from('transactions')
+          .select('term_remaining_balance, term_paid_amount')
+          .eq('customer_id', c.id)
+          .eq('payment_method', 'term');
+        const totalOwed = (txs || []).reduce((sum, tx) => {
+          return sum + ((tx.term_remaining_balance || 0) - (tx.term_paid_amount || 0));
+        }, 0);
+        if (totalOwed > 0) {
+          result.push({ id: c.id, name: c.name, total_outstanding: totalOwed, tx_count: (txs || []).length });
+        }
+      }
+      result.sort((a, b) => b.total_outstanding - a.total_outstanding);
+      setCustListData(result);
+    } catch (err) {
+      console.error('Error fetching customer list:', err);
+    } finally {
+      setCustListLoading(false);
+    }
+  };
+
+  const fetchCustDetail = async (customer: {id: string; name: string}) => {
+    setCustDetailSelected(customer);
+    setCustDetailLoading(true);
+    setCustDetailTransactions([]);
+    setCustDetailTotalOutstanding(0);
+    try {
+      const { data, error } = await supabase
+        .from('transactions')
+        .select('id, created_at, total_amount, term_remaining_balance, term_paid_amount, status')
+        .eq('customer_id', customer.id)
+        .eq('payment_method', 'term')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      let totalOwed = 0;
+      const itemsMap: Record<string, string[]> = {};
+      if (data && data.length > 0) {
+        const { data: items } = await supabase
+          .from('transaction_items')
+          .select('transaction_id, products(name)')
+          .in('transaction_id', data.map(tx => tx.id));
+        if (items) {
+          for (const item of items) {
+            if (!itemsMap[item.transaction_id]) itemsMap[item.transaction_id] = [];
+            const name = (item as any).products?.name;
+            if (name) itemsMap[item.transaction_id].push(name);
+          }
+        }
+      }
+      const txData = (data || []).map(tx => {
+        const owed = (tx.term_remaining_balance || tx.total_amount || 0) - (tx.term_paid_amount || 0);
+        totalOwed += Math.max(0, owed);
+        return { ...tx, outstanding: Math.max(0, owed), productNames: itemsMap[tx.id] || [] };
+      });
+      setCustDetailTransactions(txData);
+      setCustDetailTotalOutstanding(totalOwed);
+    } catch (err) {
+      console.error('Error fetching customer detail:', err);
+    } finally {
+      setCustDetailLoading(false);
+    }
   };
 
   const searchRpCustomers = async (query: string) => {
@@ -600,6 +772,24 @@ export default function CashierPOS() {
         return paid < total;
       });
       setRpOutstanding(outstanding);
+      // Fetch product names for each transaction
+      if (outstanding.length > 0) {
+        const { data: items, error: itemsError } = await supabase
+          .from('transaction_items')
+          .select('transaction_id, products(name)')
+          .in('transaction_id', outstanding.map(tx => tx.id));
+        if (!itemsError && items) {
+          const itemsMap: Record<string, string[]> = {};
+          for (const item of items) {
+            if (!itemsMap[item.transaction_id]) itemsMap[item.transaction_id] = [];
+            const name = (item as any).products?.name;
+            if (name) itemsMap[item.transaction_id].push(name);
+          }
+          setRpTxItems(itemsMap);
+        }
+      } else {
+        setRpTxItems({});
+      }
     } catch (err) {
       console.error('Error fetching outstanding term transactions:', err);
     }
@@ -710,6 +900,7 @@ export default function CashierPOS() {
       setRpSelectedCustomer(null);
       setRpAmount('');
       setRpOutstanding([]);
+      setRpTxItems({});
       setRpPreview([]);
       setRpReferenceNumber('');
       setRpNotes('');
@@ -781,9 +972,9 @@ export default function CashierPOS() {
             <ThemeToggle />
             <div className="h-8 w-px bg-border mx-2" />
             <Button onClick={() => setIsDailyReportOpen(true)} variant="outline" size="sm" className="font-bold text-xs flex items-center gap-2 border-dashed border-primary/50 text-primary hover:bg-primary/10"><FileText className="h-4 w-4 hidden md:block" /> DAILY REPORT</Button>
-            <Button onClick={() => {setIsReceivePaymentOpen(true); setRpCustomerName(''); setRpSelectedCustomer(null); setRpAmount(''); setRpOutstanding([]); setRpPreview([]); setRpNotes('');}} variant="outline" size="sm" className="font-bold text-xs flex items-center gap-2 border-dashed border-orange-500/50 text-orange-600 hover:bg-orange-50"><HandCoins className="h-4 w-4 hidden md:block" /> RECEIVE</Button>
-            <Button onClick={() => setIsSettingsModalOpen(true)} variant="ghost" size="sm" className="font-bold text-xs"><Settings className="h-4 w-4" /></Button>
-            <Button onClick={handleSignOut} variant="destructive" size="sm" className="font-bold text-xs flex items-center gap-2"><LogOut className="h-4 w-4" /> LOCK</Button>
+            <Button onClick={() => {setIsReceivePaymentOpen(true); setRpCustomerName(''); setRpSelectedCustomer(null); setRpAmount(''); setRpOutstanding([]); setRpTxItems({}); setRpPreview([]); setRpNotes('');}} variant="outline" size="sm" className="font-bold text-xs flex items-center gap-2 border-dashed border-orange-500/50 text-orange-600 hover:bg-orange-50"><HandCoins className="h-4 w-4 hidden md:block" /> RECEIVE</Button>
+            <Button onClick={() => { setIsCustListOpen(true); fetchCustList(); }} variant="outline" size="sm" className="font-bold text-xs flex items-center gap-2 border-dashed border-blue-500/50 text-blue-600 hover:bg-blue-50"><Users className="h-4 w-4 hidden md:block" /> CUSTOMERS</Button>
+            <Button onClick={handleSignOut} variant="destructive" size="sm" className="font-bold text-xs flex items-center gap-2"><LogOut className="h-4 w-4" /> LOGOUT</Button>
           </div>
         </header>
 
@@ -1087,6 +1278,50 @@ export default function CashierPOS() {
               />
             </div>
 
+            {paymentMethod === 'term' && (
+              <div className="bg-muted/50 p-4 rounded-3xl border border-border">
+                <label className="block text-xs font-black uppercase text-gray-600 dark:text-gray-400 mb-2 text-center">Link to Existing Customer</label>
+                <div className="relative">
+                  <Input
+                    type="text"
+                    className="h-12 text-center text-base font-bold bg-card rounded-2xl"
+                    placeholder="Search customer..."
+                    value={termCustSearch}
+                    onChange={(e) => {
+                      setTermCustSearch(e.target.value);
+                      searchTermCustomer(e.target.value);
+                      setTermCustSelected(null);
+                      setTermCustOutstanding(0);
+                    }}
+                  />
+                  {termCustResults.length > 0 && !termCustSelected && (
+                    <div className="absolute top-full left-0 right-0 bg-popover border border-border rounded-xl shadow-xl z-50 mt-1 max-h-48 overflow-y-auto">
+                      {termCustResults.map((c) => (
+                        <button
+                          key={c.id}
+                          className="w-full text-left px-4 py-3 text-sm font-bold hover:bg-muted transition-colors border-b border-border last:border-0"
+                          onClick={() => selectTermCustomer(c)}
+                        >
+                          {c.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                {termCustSelected && (
+                  <div className="mt-3 bg-card rounded-xl p-3 border border-border">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-bold text-green-600">✓ {termCustSelected.name}</span>
+                      <button className="text-[10px] text-muted-foreground underline" onClick={() => { setTermCustSelected(null); setTermCustSearch(''); setTermCustOutstanding(0); }}>Clear</button>
+                    </div>
+                    {termCustOutstanding > 0 && (
+                      <p className="text-xs text-red-500 font-bold mt-1">Outstanding: ₱{termCustOutstanding.toFixed(2)}</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="flex gap-4">
               <Button variant="ghost" className="flex-1 h-14 rounded-2xl font-bold uppercase" onClick={() => setIsPaymentModalOpen(false)}>Back</Button>
               <Button className="flex-[2] h-14 rounded-2xl font-black uppercase" onClick={completeTransaction}>Finalize</Button>
@@ -1094,8 +1329,8 @@ export default function CashierPOS() {
           </div>
         </Modal>
 
-        <Modal isOpen={isReceiptModalOpen} onClose={() => setIsReceiptModalOpen(false)} title="Finalized" size="md">
-          {receiptData && (
+        <Modal isOpen={isReceiptModalOpen} onClose={() => { setIsReceiptModalOpen(false); setPrintMode(null); }} title="Finalized" size="md">
+        {receiptData && printMode === 'sale' && (
             <div className="bg-white p-8 rounded-3xl text-gray-900 shadow-inner">
               <div className="text-center mb-8">
                 <div className="h-12 w-12 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4 text-primary"><Receipt className="h-6 w-6" /></div>
@@ -1106,8 +1341,11 @@ export default function CashierPOS() {
                 {settings?.show_phone_on_receipt && settings?.store_phone && (
                   <p className="text-gray-500 text-sm">TEL: {settings.store_phone}</p>
                 )}
-                {settings?.receipt_header && (
+                {settings?.receipt_header && receiptData?.paymentMethod !== 'term' && (
                   <p className="text-gray-500 text-xs mt-2 italic whitespace-pre-wrap">{settings.receipt_header}</p>
+                )}
+                {receiptData?.paymentMethod === 'term' && (
+                  <p className="text-gray-500 text-xs mt-2 italic font-bold uppercase">TERM PAYMENT RECEIPT</p>
                 )}
               </div>
               <div className={`grid ${receiptData.paymentMethod === 'term' ? 'grid-cols-3' : receiptData.referenceNumber ? 'grid-cols-3' : 'grid-cols-2'} gap-4 border-y border-dashed border-gray-200 py-6 mb-8 text-xs`}>
@@ -1237,7 +1475,7 @@ export default function CashierPOS() {
                 )}
               </div>
               <div className="flex gap-4">
-                <Button variant="ghost" className="flex-1 h-12 rounded-2xl font-bold uppercase" onClick={() => setIsReceiptModalOpen(false)}>Close</Button>
+                <Button variant="ghost" className="flex-1 h-12 rounded-2xl font-bold uppercase" onClick={cancelTransaction}>Close</Button>
                 <Button className="flex-[2] h-12 rounded-2xl font-black uppercase" onClick={printReceipt}>Print Ticket</Button>
               </div>
             </div>
@@ -1268,6 +1506,7 @@ export default function CashierPOS() {
                       searchRpCustomers(e.target.value);
                       setRpSelectedCustomer(null);
                       setRpOutstanding([]);
+      setRpTxItems({});
                       setRpPreview([]);
                     }}
                     className="h-10 font-bold"
@@ -1287,6 +1526,32 @@ export default function CashierPOS() {
                   )}
                 </div>
               </div>
+
+              {rpOutstanding.length > 0 && (
+                <div>
+                  <label className="block text-xs font-bold text-muted-foreground uppercase mb-2">Term Transactions</label>
+                  <div className="space-y-2 max-h-64 overflow-y-auto mb-4">
+                    {rpOutstanding.map((tx) => {
+                      const owed = (tx.term_remaining_balance || tx.total_amount) - (tx.term_paid_amount || 0);
+                      const productNames = rpTxItems[tx.id] || [];
+                      return (
+                        <div key={tx.id} className="bg-card rounded-xl p-3 border border-border">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <p className="text-xs font-mono font-bold text-muted-foreground">#{tx.id.slice(0, 8).toUpperCase()}</p>
+                              <p className="text-[10px] text-muted-foreground">{new Date(tx.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p>
+                            </div>
+                            <span className="text-sm font-black text-red-500">₱{owed.toFixed(2)} remaining</span>
+                          </div>
+                          {productNames.length > 0 && (
+                            <p className="text-[10px] text-muted-foreground font-bold mt-1 truncate">{productNames.join(', ')}</p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {rpOutstanding.length > 0 && (
                 <div className="bg-orange-50 dark:bg-orange-900/10 border border-orange-200 dark:border-orange-800 rounded-2xl p-4 space-y-2">
@@ -1421,9 +1686,7 @@ export default function CashierPOS() {
                 {settings?.show_phone_on_receipt && settings?.store_phone && (
                   <p className="text-gray-500 text-sm">TEL: {settings.store_phone}</p>
                 )}
-                {settings?.receipt_header && (
-                  <p className="text-gray-500 text-xs mt-2 italic whitespace-pre-wrap">{settings.receipt_header}</p>
-                )}
+                <p className="text-gray-500 text-xs mt-2 italic font-bold uppercase">TERM PAYMENT RECEIPT</p>
               </div>
 
               <div className="grid grid-cols-3 gap-4 border-y border-dashed border-gray-200 py-6 mb-8 text-xs">
@@ -1495,7 +1758,7 @@ export default function CashierPOS() {
               </div>
 
               <div className="flex gap-4">
-                <Button variant="ghost" className="flex-1 h-12 rounded-2xl font-bold uppercase" onClick={() => setIsTermReceiptOpen(false)}>Close</Button>
+                <Button variant="ghost" className="flex-1 h-12 rounded-2xl font-bold uppercase" onClick={cancelTermPayment}>Close</Button>
                 <Button className="flex-[2] h-12 rounded-2xl font-black uppercase" onClick={printTermReceipt}><Printer className="h-4 w-4 mr-2" /> Print Ticket</Button>
               </div>
             </div>
@@ -1508,7 +1771,7 @@ export default function CashierPOS() {
       `}</style>
       </div>
       <div className="hidden print:block">
-        {receiptData && (
+        {receiptData && printMode === 'sale' && (
           <PrintableReceipt
             transactionId={receiptData.id}
             date={receiptData.date}
@@ -1541,28 +1804,108 @@ export default function CashierPOS() {
       </div>
 
       <div className="hidden print:block">
-        {termReceiptData && (
-          <PrintableTermReceipt
-            id={termReceiptData.id}
+        {termReceiptData && printMode === 'term' && (
+          <PrintableReceipt
+            termPaymentMode
+            transactionId={termReceiptData.id}
             date={termReceiptData.date}
-            customerName={termReceiptData.customerName}
-            cashierName={termReceiptData.cashierName}
-            amount={termReceiptData.amount}
+            total={termReceiptData.amount}
             paymentMethod={termReceiptData.paymentMethod}
             referenceNumber={termReceiptData.referenceNumber}
-            notes={termReceiptData.notes}
-            allocations={termReceiptData.allocations}
             remainingBalance={termReceiptData.remainingBalance}
             storeName={settings?.store_name}
             storeAddress={settings?.store_address}
             storePhone={settings?.store_phone}
             receiptHeader={settings?.receipt_header}
             receiptFooter={settings?.receipt_footer}
-            showAddressOnReceipt={settings?.show_address_on_receipt}
-            showPhoneOnReceipt={settings?.show_phone_on_receipt}
+            cashierName={termReceiptData.cashierName}
+            customerName={termReceiptData.customerName}
+            allocations={termReceiptData.allocations}
+            notes={termReceiptData.notes}
+            showSignatures={showSignatures}
           />
         )}
       </div>
+
+      <Modal isOpen={isCustListOpen} onClose={() => { setIsCustListOpen(false); setCustDetailSelected(null); setCustDetailTransactions([]); setCustDetailTotalOutstanding(0); }} title="Customers with Outstanding Balance" size="lg">
+        <div className="space-y-4">
+          {custDetailSelected ? (
+            <>
+              <div className="flex items-center gap-3 pb-2">
+                <Button variant="ghost" size="sm" className="h-8 px-2 font-bold text-xs" onClick={() => { setCustDetailSelected(null); setCustDetailTransactions([]); setCustDetailTotalOutstanding(0); }}>
+                  <ChevronLeft className="h-4 w-4 mr-1" /> Back
+                </Button>
+                <span className="text-sm font-bold text-muted-foreground">/</span>
+                <span className="font-bold text-sm">{custDetailSelected.name}</span>
+              </div>
+
+              {custDetailLoading ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  <p className="text-sm font-bold">Loading transactions...</p>
+                </div>
+              ) : custDetailTransactions.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  <p className="text-sm font-bold">No transactions found for this customer</p>
+                </div>
+              ) : (
+                <>
+                  <div className="bg-card rounded-xl px-5 py-4 border border-border">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-bold uppercase text-muted-foreground">Total Outstanding Balance</span>
+                      <span className="text-2xl font-black text-red-500">₱{custDetailTotalOutstanding.toFixed(2)}</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 max-h-80 overflow-y-auto">
+                    {custDetailTransactions.map((tx) => (
+                      <div key={tx.id} className="bg-card rounded-xl px-5 py-3 border border-border">
+                        <div className="flex justify-between items-start mb-2">
+                          <div>
+                            <p className="font-mono font-bold text-xs text-muted-foreground">#{tx.id.substring(0, 8).toUpperCase()}</p>
+                            <p className="text-xs text-muted-foreground">{new Date(tx.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p>
+                          </div>
+                          <span className="font-black text-sm text-red-500">₱{tx.outstanding.toFixed(2)}</span>
+                        </div>
+                        {tx.productNames && tx.productNames.length > 0 && (
+                          <p className="text-[10px] text-muted-foreground font-bold mb-2 truncate">{tx.productNames.join(', ')}</p>
+                        )}
+                        <div className="flex justify-between items-center text-[10px]">
+                          <span className="font-bold text-muted-foreground">Total: ₱{(tx.total_amount || 0).toFixed(2)}</span>
+                          <span className={`font-bold uppercase ${tx.status === 'completed' ? 'text-green-600' : 'text-orange-600'}`}>{tx.status}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </>
+          ) : custListLoading ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <p className="text-sm font-bold">Loading...</p>
+            </div>
+          ) : custListData.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <Users className="h-12 w-12 mx-auto mb-3 opacity-30" />
+              <p className="text-sm font-bold">No customers with outstanding balances</p>
+            </div>
+          ) : (
+            <div className="space-y-2 max-h-96 overflow-y-auto">
+              {custListData.map((c) => (
+                <div key={c.id} className="flex items-center justify-between bg-card rounded-xl px-5 py-4 border border-border hover:border-blue-200 hover:bg-blue-50/50 transition-colors cursor-pointer" onClick={() => fetchCustDetail(c)}>
+                  <div>
+                    <p className="font-bold text-sm">{c.name}</p>
+                    <p className="text-[10px] text-muted-foreground font-bold">{c.tx_count} unpaid transaction{c.tx_count > 1 ? 's' : ''}</p>
+                  </div>
+                  <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="flex justify-end pt-2">
+            <Button variant="ghost" className="h-10 font-bold uppercase" onClick={() => { setIsCustListOpen(false); setCustDetailSelected(null); setCustDetailTransactions([]); setCustDetailTotalOutstanding(0); }}>Close</Button>
+          </div>
+        </div>
+      </Modal>
 
       <DailyReportModal 
         isOpen={isDailyReportOpen} 

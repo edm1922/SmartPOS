@@ -6,12 +6,17 @@ interface ReceiptItem {
     quantity: number;
 }
 
+interface TermAllocation {
+    transactionId: string;
+    amount: number;
+}
+
 interface ReceiptProps {
     transactionId: string;
     date: string;
-    items: ReceiptItem[];
-    subtotal: number;
-    tax: number;
+    items?: ReceiptItem[];
+    subtotal?: number;
+    tax?: number;
     total: number;
     originalTotal?: number;
     discountPercent?: number;
@@ -34,14 +39,18 @@ interface ReceiptProps {
     receiptFooter?: string;
     taxRate?: number;
     showSignatures?: boolean;
+    termPaymentMode?: boolean;
+    customerName?: string;
+    allocations?: TermAllocation[];
+    notes?: string;
 }
 
 export const PrintableReceipt: React.FC<ReceiptProps> = ({
     transactionId,
     date,
-    items,
-    subtotal,
-    tax,
+    items = [],
+    subtotal = 0,
+    tax = 0,
     total,
     originalTotal,
     discountPercent,
@@ -64,6 +73,10 @@ export const PrintableReceipt: React.FC<ReceiptProps> = ({
     receiptFooter = 'Happy to serve you',
     taxRate = 12,
     showSignatures = true,
+    termPaymentMode,
+    customerName,
+    allocations,
+    notes,
 }) => {
     const formatCurrency = (amount: number) => amount.toFixed(2);
 
@@ -107,9 +120,9 @@ export const PrintableReceipt: React.FC<ReceiptProps> = ({
     const remainingCount = groupedItems.length - visibleItems.length;
     const remainingTotal = groupedItems.slice(MAX_ITEMS - 2).reduce((sum, item) => sum + item.total, 0);
 
-    // Column widths
-    const COLUMNS = { ITEM: 38, QTY: 8, PRICE: 12, TOTAL: 12 };
-    const TOTAL_WIDTH = COLUMNS.ITEM + COLUMNS.QTY + COLUMNS.PRICE + COLUMNS.TOTAL;
+    const TERM_WIDTH = 50;
+    const SALE_COLUMNS = { ITEM: 38, QTY: 8, PRICE: 12, TOTAL: 12 };
+    const SALE_WIDTH = SALE_COLUMNS.ITEM + SALE_COLUMNS.QTY + SALE_COLUMNS.PRICE + SALE_COLUMNS.TOTAL;
 
     const padRight = (str: string, width: number) => {
         str = String(str);
@@ -123,59 +136,82 @@ export const PrintableReceipt: React.FC<ReceiptProps> = ({
 
     const buildReceipt = () => {
         const lines: string[] = [];
+        const totalWidth = termPaymentMode ? TERM_WIDTH : SALE_WIDTH;
 
         // Header
         lines.push(storeName);
         lines.push(storeAddress);
         lines.push(`Tel: ${storePhone}`);
-        lines.push(receiptHeader);
+        if (!termPaymentMode) lines.push(receiptHeader);
 
-        // Transaction info - compressed
-        lines.push(`INV:${transactionId.substring(0, 8)} DATE:${formatDate(date)}`);
-        lines.push(`CSR:${cashierName || 'SYSTEM'} CUST:${deliveredTo || 'WALK-IN'}${tin ? ` TIN:${tin}` : ''}${orNumber ? ` Purchase Order:${orNumber}` : ''}`);
-
-        // Items header
-        lines.push(padRight('ITEM', COLUMNS.ITEM) + padLeft('QTY', COLUMNS.QTY) + padLeft('PRICE', COLUMNS.PRICE) + padLeft('TOTAL', COLUMNS.TOTAL));
-
-        // Items
-        visibleItems.forEach(item => {
-            lines.push(
-                padRight(item.name.substring(0, COLUMNS.ITEM), COLUMNS.ITEM) +
-                padLeft(item.quantity.toString(), COLUMNS.QTY) +
-                padLeft(formatCurrency(item.price), COLUMNS.PRICE) +
-                padLeft(formatCurrency(item.total), COLUMNS.TOTAL)
-            );
-        });
-
-        // Summary if needed
-        if (remainingCount > 0) {
-            lines.push(padRight(`+${remainingCount} items`, COLUMNS.ITEM + COLUMNS.QTY + COLUMNS.PRICE) + padLeft(formatCurrency(remainingTotal), COLUMNS.TOTAL));
-        }
-
-        // Discount line (if applicable)
-        if (discountPercent && discountAmount && discountAmount > 0) {
-            lines.push(padRight(`Discount (${discountPercent}%)`, TOTAL_WIDTH - 12) + padLeft(`-${formatCurrency(discountAmount)}`, 12));
-        }
-
-        // Totals (VAT is inclusive in product prices)
-        const currentTaxRate = taxRate || 12;
-        const vatableSales = total / (1 + currentTaxRate / 100);
-        const vatAmount = total - vatableSales;
-
-        lines.push('-'.repeat(TOTAL_WIDTH));
-        lines.push(padRight('VATable Sales', TOTAL_WIDTH - 12) + padLeft(formatCurrency(vatableSales), 12));
-        lines.push(padRight('Less VAT', TOTAL_WIDTH - 12) + padLeft(formatCurrency(vatAmount), 12));
-        lines.push(padRight('TOTAL SALES(VAT Inclusive)', TOTAL_WIDTH - 12) + padLeft(formatCurrency(total), 12));
-        lines.push('-'.repeat(TOTAL_WIDTH));
-
-        // Payment
-        if (paymentMethod.toLowerCase() === 'term') {
-            lines.push(`TERM: AMOUNT DUE ${formatCurrency(remainingBalance || amountReceived || 0)}`);
-            lines.push(`DUE DATE: ${dueDate ? new Date(dueDate).toLocaleDateString() : 'N/A'}`);
+        if (termPaymentMode) {
+            lines.push('TERM PAYMENT RECEIPT');
+            lines.push(`REF:${transactionId.substring(0, 8).toUpperCase()} DATE:${formatDate(date)}`);
+            lines.push(`CSR:${cashierName || 'SYSTEM'} CUST:${customerName || 'N/A'}`);
+            lines.push('-'.repeat(totalWidth));
+            lines.push(padRight('Amount Paid', totalWidth - 12) + padLeft(formatCurrency(total), 12));
+            lines.push(`PMT:${paymentMethod.toUpperCase()}`);
+            if (referenceNumber) lines.push(`REF:${referenceNumber}`);
+            if (notes) lines.push(`NOTES:${notes}`);
+            lines.push('-'.repeat(totalWidth));
+            lines.push('ALLOCATIONS');
+            (allocations || []).forEach(a => {
+                lines.push(
+                    `  #${a.transactionId.substring(0, 8)}` +
+                    padLeft(formatCurrency(a.amount), totalWidth - 22)
+                );
+            });
+            lines.push('-'.repeat(totalWidth));
+            lines.push(padRight('Remaining Balance', totalWidth - 12) + padLeft(formatCurrency(remainingBalance || 0), 12));
+            lines.push('-'.repeat(totalWidth));
         } else {
-            lines.push(`PMT:${paymentMethod.toUpperCase()} ${amountReceived ? `CASH:${formatCurrency(amountReceived)}` : ''} ${change ? `CHG:${formatCurrency(change)}` : ''}`);
-            if (referenceNumber) {
-                lines.push(`REF:${referenceNumber}`);
+            // Transaction info - compressed
+            lines.push(`INV:${transactionId.substring(0, 8)} DATE:${formatDate(date)}`);
+            lines.push(`CSR:${cashierName || 'SYSTEM'} CUST:${deliveredTo || 'WALK-IN'}${tin ? ` TIN:${tin}` : ''}${orNumber ? ` Purchase Order:${orNumber}` : ''}`);
+
+            // Items header
+            lines.push(padRight('ITEM', SALE_COLUMNS.ITEM) + padLeft('QTY', SALE_COLUMNS.QTY) + padLeft('PRICE', SALE_COLUMNS.PRICE) + padLeft('TOTAL', SALE_COLUMNS.TOTAL));
+
+            // Items
+            visibleItems.forEach(item => {
+                lines.push(
+                    padRight(item.name.substring(0, SALE_COLUMNS.ITEM), SALE_COLUMNS.ITEM) +
+                    padLeft(item.quantity.toString(), SALE_COLUMNS.QTY) +
+                    padLeft(formatCurrency(item.price), SALE_COLUMNS.PRICE) +
+                    padLeft(formatCurrency(item.total), SALE_COLUMNS.TOTAL)
+                );
+            });
+
+            // Summary if needed
+            if (remainingCount > 0) {
+                lines.push(padRight(`+${remainingCount} items`, SALE_COLUMNS.ITEM + SALE_COLUMNS.QTY + SALE_COLUMNS.PRICE) + padLeft(formatCurrency(remainingTotal), SALE_COLUMNS.TOTAL));
+            }
+
+            // Discount line (if applicable)
+            if (discountAmount && discountAmount > 0) {
+                lines.push(padRight(`Discount`, totalWidth - 12) + padLeft(`-${formatCurrency(discountAmount)}`, 12));
+            }
+
+            // Totals (VAT is inclusive in product prices)
+            const currentTaxRate = taxRate || 12;
+            const vatableSales = total / (1 + currentTaxRate / 100);
+            const vatAmount = total - vatableSales;
+
+            lines.push('-'.repeat(totalWidth));
+            lines.push(padRight('VATable Sales', totalWidth - 12) + padLeft(formatCurrency(vatableSales), 12));
+            lines.push(padRight('Less VAT', totalWidth - 12) + padLeft(formatCurrency(vatAmount), 12));
+            lines.push(padRight('TOTAL SALES(VAT Inclusive)', totalWidth - 12) + padLeft(formatCurrency(total), 12));
+            lines.push('-'.repeat(totalWidth));
+
+            // Payment
+            if (paymentMethod.toLowerCase() === 'term') {
+                lines.push(`TERM: AMOUNT DUE ${formatCurrency(remainingBalance || amountReceived || 0)}`);
+                lines.push(`DUE DATE: ${dueDate ? new Date(dueDate).toLocaleDateString() : 'N/A'}`);
+            } else {
+                lines.push(`PMT:${paymentMethod.toUpperCase()} ${amountReceived ? `CASH:${formatCurrency(amountReceived)}` : ''} ${change ? `CHG:${formatCurrency(change)}` : ''}`);
+                if (referenceNumber) {
+                    lines.push(`REF:${referenceNumber}`);
+                }
             }
         }
 
@@ -201,7 +237,7 @@ export const PrintableReceipt: React.FC<ReceiptProps> = ({
             // Customer signature
             lines.push('Customer Signature:');
             lines.push(signatureLine);
-            lines.push(deliveredTo ? `Printed Name: ${deliveredTo}` : '');
+            lines.push(termPaymentMode && customerName ? `Printed Name: ${customerName}` : deliveredTo ? `Printed Name: ${deliveredTo}` : '');
 
             // Add small space before powered by
             lines.push('');

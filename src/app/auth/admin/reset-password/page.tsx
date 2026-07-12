@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase, supabaseAuth } from '@/lib/supabaseClient';
 import { Button } from '@/components/ui/Button';
@@ -13,20 +13,31 @@ export default function ResetPassword() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [sessionReady, setSessionReady] = useState(false);
+  const [pageError, setPageError] = useState<string | null>(null);
+  const sessionReadyRef = useRef(false);
   const router = useRouter();
 
   useEffect(() => {
-    // Check if there is a hash in the URL (Supabase recovery token)
-    // Or if the user is already authenticated (Supabase handles the redirect by setting a session)
-    const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session && !window.location.hash) {
-        // If no session and no hash, they probably shouldn't be here
-        // But hashes aren't always available in all redirect scenarios after the first load
-        // Supabase usually handles the recovery flow by setting a session
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (event === 'PASSWORD_RECOVERY') {
+          sessionReadyRef.current = true;
+          setSessionReady(true);
+        }
       }
+    );
+
+    const timeout = setTimeout(() => {
+      if (!sessionReadyRef.current) {
+        setPageError('Failed to establish recovery session. Please try the link from your email again.');
+      }
+    }, 10000);
+
+    return () => {
+      subscription.unsubscribe();
+      clearTimeout(timeout);
     };
-    checkSession();
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -101,6 +112,35 @@ export default function ResetPassword() {
               </div>
             ) : (
               <form className="space-y-6" onSubmit={handleSubmit}>
+                {!sessionReady && !pageError && (
+                  <div className="rounded-md bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 p-4">
+                    <div className="flex">
+                      <div className="flex-shrink-0">
+                        <svg className="h-5 w-5 text-blue-400 animate-spin" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                      </div>
+                      <div className="ml-3">
+                        <p className="text-sm text-blue-700 dark:text-blue-300">Verifying recovery link...</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {pageError && (
+                  <div className="rounded-md bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 p-4">
+                    <div className="flex">
+                      <div className="flex-shrink-0">
+                        <svg className="h-5 w-5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                      </div>
+                      <div className="ml-3">
+                        <p className="text-sm text-red-700 dark:text-red-300">{pageError}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
                 {error && (
                   <div className="rounded-md bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 p-4">
                     <div className="flex">
@@ -160,7 +200,7 @@ export default function ResetPassword() {
                 <div>
                   <Button
                     type="submit"
-                    disabled={loading}
+                    disabled={loading || !sessionReady}
                     className="w-full"
                     size="lg"
                   >

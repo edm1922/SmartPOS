@@ -19,33 +19,80 @@ export default function ResetPassword() {
   const router = useRouter();
 
   useEffect(() => {
-    const handleRecovery = async () => {
-      const { searchParams } = new URL(window.location.href);
-      const code = searchParams.get('code');
+    let cancelled = false;
 
-      if (code) {
-        const { error } = await supabase.auth.exchangeCodeForSession(code);
-        if (!error) {
+    const handleRecovery = async () => {
+      try {
+        const url = new URL(window.location.href);
+        const code = url.searchParams.get('code');
+        const hash = window.location.hash;
+        const hashParams = new URLSearchParams(hash.substring(1));
+        const hashAccessToken = hashParams.get('access_token');
+        const hashRefreshToken = hashParams.get('refresh_token');
+
+        console.error('Recovery URL debug:', {
+          hasCode: !!code,
+          hasHashAccessToken: !!hashAccessToken,
+          hasHashRefreshToken: !!hashRefreshToken,
+          pathname: window.location.pathname,
+          fullUrl: window.location.href,
+        });
+
+        if (code) {
+          console.error('Attempting exchangeCodeForSession');
+          const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+          console.error('exchangeCodeForSession result:', { data: !!data, error });
+          if (!error && !cancelled) {
+            sessionReadyRef.current = true;
+            setSessionReady(true);
+            window.history.replaceState({}, '', window.location.pathname);
+            return;
+          }
+        }
+
+        if (hashAccessToken && hashRefreshToken) {
+          console.error('Attempting setSession with hash tokens');
+          const { data, error } = await supabase.auth.setSession({
+            access_token: hashAccessToken,
+            refresh_token: hashRefreshToken,
+          });
+          console.error('setSession result:', { data: !!data, error });
+          if (!error && !cancelled) {
+            sessionReadyRef.current = true;
+            setSessionReady(true);
+            window.history.replaceState({}, '', window.location.pathname);
+            return;
+          }
+        }
+
+        console.error('Checking existing session');
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        console.error('getSession result:', { hasSession: !!session, error: sessionError });
+        if (session && !cancelled) {
           sessionReadyRef.current = true;
           setSessionReady(true);
-        } else {
-          console.error('Code exchange failed:', error);
-          setPageError('Failed to verify recovery link. Please try again.');
+          return;
         }
-      } else {
-        const hash = window.location.hash;
-        if (hash) {
-          const { data: { subscription } } = supabase.auth.onAuthStateChange(
-            async (event, session) => {
-              if (event === 'PASSWORD_RECOVERY') {
-                sessionReadyRef.current = true;
-                setSessionReady(true);
-              }
+
+        console.error('Listening for auth state change');
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(
+          async (event, session) => {
+            console.error('Auth state change event:', event, { hasSession: !!session });
+            if ((event === 'PASSWORD_RECOVERY' || event === 'SIGNED_IN') && session && !cancelled) {
+              sessionReadyRef.current = true;
+              setSessionReady(true);
             }
-          );
-          return () => subscription.unsubscribe();
-        } else {
-          setPageError('Invalid recovery link. Please request a new one.');
+          }
+        );
+
+        return () => {
+          cancelled = true;
+          subscription.unsubscribe();
+        };
+      } catch (err) {
+        console.error('Recovery handler error:', err);
+        if (!cancelled) {
+          setPageError('An unexpected error occurred. Please try the link again.');
         }
       }
     };
@@ -53,12 +100,16 @@ export default function ResetPassword() {
     handleRecovery();
 
     const timeout = setTimeout(() => {
-      if (!sessionReadyRef.current) {
+      if (!sessionReadyRef.current && !cancelled) {
+        console.error('Recovery session timeout');
         setPageError('Failed to establish recovery session. Please try the link from your email again.');
       }
-    }, 10000);
+    }, 15000);
 
-    return () => clearTimeout(timeout);
+    return () => {
+      cancelled = true;
+      clearTimeout(timeout);
+    };
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {

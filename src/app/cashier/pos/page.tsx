@@ -87,7 +87,7 @@ export default function CashierPOS() {
   const [barcodeValue, setBarcodeValue] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [applyDiscount, setApplyDiscount] = useState(false);
-  const [discountPercent, setDiscountPercent] = useState(0);
+  const [discountAmount, setDiscountAmount] = useState(0);
   const [downPaymentPercent, setDownPaymentPercent] = useState(20);
   const [termDays, setTermDays] = useState(30);
   const [deliveredTo, setDeliveredTo] = useState('');
@@ -434,8 +434,8 @@ export default function CashierPOS() {
   const calculateChange = () => {
     if (paymentMethod === 'term') return 0;
     const raw = calculateTotal();
-    const total = applyDiscount && discountPercent > 0
-      ? parseFloat((raw - (raw * discountPercent / 100)).toFixed(2))
+    const total = applyDiscount && discountAmount > 0
+      ? parseFloat((raw - discountAmount).toFixed(2))
       : raw;
     const received = parseFloat(amountReceived) || 0;
     return parseFloat((received - total).toFixed(2));
@@ -497,10 +497,10 @@ export default function CashierPOS() {
       }
 
       const rawTotal = calculateTotal();
-      const discountAmount = applyDiscount && discountPercent > 0
-        ? parseFloat((rawTotal * discountPercent / 100).toFixed(2))
+      const discountAmountVal = applyDiscount && discountAmount > 0
+        ? parseFloat(discountAmount.toFixed(2))
         : 0;
-      const finalTotal = parseFloat((rawTotal - discountAmount).toFixed(2));
+      const finalTotal = parseFloat((rawTotal - discountAmountVal).toFixed(2));
       const downPaymentAmount = 0;
       const termRemaining = parseFloat(finalTotal.toFixed(2));
       const termDue = new Date(Date.now() + termDays * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
@@ -511,9 +511,9 @@ export default function CashierPOS() {
         payment_method: paymentMethod,
         reference_number: ['card', 'mobile', 'cheque'].includes(paymentMethod) ? referenceNumber : null,
         customer_id: customerId,
-        discount_type: applyDiscount && discountPercent > 0 ? 'percentage' : null,
-        discount_value: applyDiscount && discountPercent > 0 ? discountPercent : 0,
-        discount_amount: discountAmount,
+        discount_type: applyDiscount && discountAmount > 0 ? 'fixed' : null,
+        discount_value: applyDiscount && discountAmount > 0 ? discountAmount : 0,
+        discount_amount: discountAmountVal,
         status: 'completed'
       };
 
@@ -551,8 +551,8 @@ export default function CashierPOS() {
         items: [...cart],
         total: finalTotal,
         originalTotal: rawTotal,
-        discountPercent: applyDiscount && discountPercent > 0 ? discountPercent : 0,
-        discountAmount: discountAmount,
+        discountPercent: 0,
+        discountAmount: discountAmountVal,
         paymentMethod,
         referenceNumber: ['card', 'mobile', 'cheque'].includes(paymentMethod) ? referenceNumber : null,
         amountReceived: paymentMethod === 'term' ? downPaymentAmount : (parseFloat(amountReceived) || finalTotal),
@@ -568,7 +568,7 @@ export default function CashierPOS() {
       setTermCustSearch('');
       setTermCustOutstanding(0);
       setApplyDiscount(false);
-      setDiscountPercent(0);
+      setDiscountAmount(0);
       setDownPaymentPercent(20);
       setTermDays(30);
       setCart([]);
@@ -1140,11 +1140,11 @@ export default function CashierPOS() {
           <div className="space-y-8 p-2">
             <div className="text-center">
               <p className="text-xs font-bold text-gray-600 dark:text-gray-400 uppercase tracking-widest mb-1">Total Due</p>
-              {applyDiscount && discountPercent > 0 ? (
+              {applyDiscount && discountAmount > 0 ? (
                 <>
                   <p className="text-lg font-bold text-muted-foreground line-through">{formatPrice(calculateTotal())}</p>
-                  <h2 className="text-5xl font-black text-green-600">{formatPrice(parseFloat((calculateTotal() - (calculateTotal() * discountPercent / 100)).toFixed(2)))}</h2>
-                  <p className="text-xs font-bold text-green-600 mt-1">-{discountPercent}% Discount</p>
+                  <h2 className="text-5xl font-black text-green-600">{formatPrice(parseFloat((calculateTotal() - discountAmount).toFixed(2)))}</h2>
+                  <p className="text-xs font-bold text-green-600 mt-1">-{formatPrice(discountAmount)} Discount</p>
                 </>
               ) : (
                 <h2 className="text-5xl font-black text-primary">{formatPrice(calculateTotal())}</h2>
@@ -1164,7 +1164,7 @@ export default function CashierPOS() {
                   <Input type="number" className="h-20 text-center text-4xl font-black bg-card rounded-2xl" placeholder="0.00" value={amountReceived} onChange={(e) => setAmountReceived(e.target.value)} autoFocus />
                   <div className="absolute left-6 top-1/2 -translate-y-1/2 text-2xl font-black text-gray-300">₱</div>
                 </div>
-                {parseFloat(amountReceived) >= (applyDiscount && discountPercent > 0 ? parseFloat((calculateTotal() - (calculateTotal() * discountPercent / 100)).toFixed(2)) : calculateTotal()) && (
+                {parseFloat(amountReceived) >= (applyDiscount && discountAmount > 0 ? parseFloat((calculateTotal() - discountAmount).toFixed(2)) : calculateTotal()) && (
                   <div className="mt-6 text-center animate-in zoom-in duration-300">
                     <p className="text-xs font-black text-green-600 uppercase mb-1">Change Due</p>
                     <h3 className="text-4xl font-black text-green-700">{formatPrice(calculateChange())}</h3>
@@ -1209,12 +1209,12 @@ export default function CashierPOS() {
                 <div className="bg-background rounded-xl p-3 space-y-1">
                   {(() => {
                     const rawTotal = calculateTotal();
-                    const discAmount = applyDiscount && discountPercent > 0 ? parseFloat((rawTotal * discountPercent / 100).toFixed(2)) : 0;
+                    const discAmount = applyDiscount && discountAmount > 0 ? discountAmount : 0;
                     const discTotal = parseFloat((rawTotal - discAmount).toFixed(2));
                     const due = new Date(Date.now() + termDays * 24 * 60 * 60 * 1000);
                     return (
                       <>
-                        {applyDiscount && discountPercent > 0 && (
+                        {applyDiscount && discountAmount > 0 && (
                           <div className="flex justify-between text-xs">
                             <span className="text-muted-foreground">Subtotal</span>
                             <span className="font-bold line-through">{formatPrice(rawTotal)}</span>
@@ -1245,7 +1245,7 @@ export default function CashierPOS() {
                     checked={applyDiscount}
                     onChange={() => {
                       setApplyDiscount(!applyDiscount);
-                      if (applyDiscount) setDiscountPercent(0);
+                      if (applyDiscount) setDiscountAmount(0);
                     }}
                   />
                   <div className="peer h-6 w-11 rounded-full border bg-gray-200 after:absolute after:left-0.5 after:top-0.5 after:h-5 after:w-5 after:rounded-full after:border after:border-gray-300 after:bg-white after:transition-all after:content-[''] peer-checked:bg-primary peer-checked:after:translate-x-5 peer-checked:after:border-white dark:border-gray-600 dark:bg-gray-700 dark:after:bg-gray-400"></div>
@@ -1254,18 +1254,19 @@ export default function CashierPOS() {
               {applyDiscount && (
                 <div className="space-y-3">
                   <div>
-                    <label className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 mb-1">Discount Percentage</label>
+                    <label className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 mb-1">Discount Amount</label>
                     <div className="relative">
                       <Input
                         type="number"
-                        className="h-10 text-center text-lg font-black bg-card rounded-xl"
-                        placeholder="0"
+                        className="h-10 text-center text-lg font-black bg-card rounded-xl pl-8"
+                        placeholder="0.00"
                         min={0}
-                        max={100}
-                        value={discountPercent || ''}
-                        onChange={(e) => setDiscountPercent(Math.min(100, Math.max(0, parseInt(e.target.value) || 0)))}
+                        max={calculateTotal()}
+                        step="0.01"
+                        value={discountAmount || ''}
+                        onChange={(e) => setDiscountAmount(Math.min(calculateTotal(), Math.max(0, parseFloat(e.target.value) || 0)))}
                       />
-                      <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm font-bold text-muted-foreground">%</span>
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-muted-foreground">₱</span>
                     </div>
                   </div>
                   <div className="bg-background rounded-xl p-3 space-y-1">
@@ -1275,11 +1276,11 @@ export default function CashierPOS() {
                     </div>
                     <div className="flex justify-between text-xs">
                       <span className="text-muted-foreground">Discount</span>
-                      <span className="font-bold text-red-500">-{formatPrice(parseFloat((calculateTotal() * discountPercent / 100).toFixed(2)))}</span>
+                      <span className="font-bold text-red-500">-{formatPrice(discountAmount)}</span>
                     </div>
                     <div className="border-t border-border pt-1 flex justify-between text-sm">
                       <span className="font-black">Final</span>
-                      <span className="font-black text-green-600">{formatPrice(parseFloat((calculateTotal() - (calculateTotal() * discountPercent / 100)).toFixed(2)))}</span>
+                      <span className="font-black text-green-600">{formatPrice(parseFloat((calculateTotal() - discountAmount).toFixed(2)))}</span>
                     </div>
                   </div>
                 </div>

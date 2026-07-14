@@ -43,10 +43,10 @@ import {
   HandCoins,
   Banknote,
   ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   Printer,
-  Users
+  Users,
+  Pencil,
+  UserPlus
 } from 'lucide-react';
 import { PrintableReceipt } from '@/components/ui/PrintableReceipt';
 import { DailyReportModal } from '@/components/cashier/DailyReportModal';
@@ -113,13 +113,19 @@ export default function CashierPOS() {
   const [termCustResults, setTermCustResults] = useState<{id: string; name: string}[]>([]);
   const [termCustSelected, setTermCustSelected] = useState<{id: string; name: string} | null>(null);
   const [termCustOutstanding, setTermCustOutstanding] = useState(0);
-  const [isCustListOpen, setIsCustListOpen] = useState(false);
-  const [custListData, setCustListData] = useState<{id: string; name: string; total_outstanding: number; tx_count: number}[]>([]);
-  const [custListLoading, setCustListLoading] = useState(false);
-  const [custDetailSelected, setCustDetailSelected] = useState<{id: string; name: string} | null>(null);
-  const [custDetailLoading, setCustDetailLoading] = useState(false);
-  const [custDetailTransactions, setCustDetailTransactions] = useState<any[]>([]);
-  const [custDetailTotalOutstanding, setCustDetailTotalOutstanding] = useState(0);
+
+  const [isCustomerListOpen, setIsCustomerListOpen] = useState(false);
+  const [customerListData, setCustomerListData] = useState<any[]>([]);
+  const [customerListLoading, setCustomerListLoading] = useState(false);
+  const [customerSearchQuery, setCustomerSearchQuery] = useState('');
+  const [isCustomerFormOpen, setIsCustomerFormOpen] = useState(false);
+  const [editingCustomer, setEditingCustomer] = useState<any>(null);
+  const [cfName, setCfName] = useState('');
+  const [cfAddress, setCfAddress] = useState('');
+  const [cfTinNumber, setCfTinNumber] = useState('');
+  const [cfBalanceOverride, setCfBalanceOverride] = useState('0');
+  const [cfSaving, setCfSaving] = useState(false);
+
   const barcodeInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -664,78 +670,6 @@ export default function CashierPOS() {
     }
   };
 
-  const fetchCustList = async () => {
-    setCustListLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('customers')
-        .select('id, name');
-      if (error) throw error;
-      const result: {id: string; name: string; total_outstanding: number; tx_count: number}[] = [];
-      for (const c of data || []) {
-        const { data: txs } = await supabase
-          .from('transactions')
-          .select('term_remaining_balance, term_paid_amount')
-          .eq('customer_id', c.id)
-          .eq('payment_method', 'term');
-        const totalOwed = (txs || []).reduce((sum, tx) => {
-          return sum + ((tx.term_remaining_balance || 0) - (tx.term_paid_amount || 0));
-        }, 0);
-        if (totalOwed > 0) {
-          result.push({ id: c.id, name: c.name, total_outstanding: totalOwed, tx_count: (txs || []).length });
-        }
-      }
-      result.sort((a, b) => b.total_outstanding - a.total_outstanding);
-      setCustListData(result);
-    } catch (err) {
-      console.error('Error fetching customer list:', err);
-    } finally {
-      setCustListLoading(false);
-    }
-  };
-
-  const fetchCustDetail = async (customer: {id: string; name: string}) => {
-    setCustDetailSelected(customer);
-    setCustDetailLoading(true);
-    setCustDetailTransactions([]);
-    setCustDetailTotalOutstanding(0);
-    try {
-      const { data, error } = await supabase
-        .from('transactions')
-        .select('id, created_at, total_amount, term_remaining_balance, term_paid_amount, status')
-        .eq('customer_id', customer.id)
-        .eq('payment_method', 'term')
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      let totalOwed = 0;
-      const itemsMap: Record<string, string[]> = {};
-      if (data && data.length > 0) {
-        const { data: items } = await supabase
-          .from('transaction_items')
-          .select('transaction_id, products(name)')
-          .in('transaction_id', data.map(tx => tx.id));
-        if (items) {
-          for (const item of items) {
-            if (!itemsMap[item.transaction_id]) itemsMap[item.transaction_id] = [];
-            const name = (item as any).products?.name;
-            if (name) itemsMap[item.transaction_id].push(name);
-          }
-        }
-      }
-      const txData = (data || []).map(tx => {
-        const owed = (tx.term_remaining_balance || tx.total_amount || 0) - (tx.term_paid_amount || 0);
-        totalOwed += Math.max(0, owed);
-        return { ...tx, outstanding: Math.max(0, owed), productNames: itemsMap[tx.id] || [] };
-      });
-      setCustDetailTransactions(txData);
-      setCustDetailTotalOutstanding(totalOwed);
-    } catch (err) {
-      console.error('Error fetching customer detail:', err);
-    } finally {
-      setCustDetailLoading(false);
-    }
-  };
-
   const searchRpCustomers = async (query: string) => {
     if (!query.trim()) { setRpCustomers([]); return; }
     try {
@@ -911,6 +845,91 @@ export default function CashierPOS() {
     }
   };
 
+  const fetchCustomerList = async () => {
+    setCustomerListLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('customers')
+        .select('*')
+        .order('name');
+      if (error) throw error;
+      const result: any[] = [];
+      for (const c of data || []) {
+        const { data: txs } = await supabase
+          .from('transactions')
+          .select('term_remaining_balance, term_paid_amount')
+          .eq('customer_id', c.id)
+          .eq('payment_method', 'term');
+        const termBalance = (txs || []).reduce((sum, tx) => {
+          return sum + ((tx.term_remaining_balance || 0) - (tx.term_paid_amount || 0));
+        }, 0);
+        const totalBalance = Math.max(0, termBalance) + (c.balance_override || 0);
+        result.push({ ...c, term_balance: Math.max(0, termBalance), total_balance: totalBalance });
+      }
+      result.sort((a, b) => b.total_balance - a.total_balance);
+      setCustomerListData(result);
+    } catch (err) {
+      console.error('Error fetching customer list:', err);
+    } finally {
+      setCustomerListLoading(false);
+    }
+  };
+
+  const saveCustomer = async () => {
+    if (!cfName.trim()) {
+      setError('Customer name is required.');
+      return;
+    }
+    setCfSaving(true);
+    try {
+      const payload = {
+        name: cfName.trim(),
+        address: cfAddress.trim() || null,
+        tin_number: cfTinNumber.trim() || null,
+        balance_override: parseFloat(cfBalanceOverride) || 0,
+      };
+      if (editingCustomer) {
+        const { error } = await supabase
+          .from('customers')
+          .update({ ...payload, updated_at: new Date().toISOString() })
+          .eq('id', editingCustomer.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from('customers')
+          .insert(payload);
+        if (error) throw error;
+      }
+      setIsCustomerFormOpen(false);
+      setEditingCustomer(null);
+      setCfName('');
+      setCfAddress('');
+      setCfTinNumber('');
+      setCfBalanceOverride('0');
+      fetchCustomerList();
+    } catch (err: any) {
+      console.error('Error saving customer:', err);
+      setError(err.message || 'Failed to save customer.');
+    } finally {
+      setCfSaving(false);
+    }
+  };
+
+  const deleteCustomer = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this customer?')) return;
+    try {
+      const { error } = await supabase
+        .from('customers')
+        .delete()
+        .eq('id', id);
+      if (error) throw error;
+      fetchCustomerList();
+    } catch (err: any) {
+      console.error('Error deleting customer:', err);
+      setError(err.message || 'Failed to delete customer.');
+    }
+  };
+
   const filteredProducts = useMemo(() => {
     return products.filter(product => {
       const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -973,7 +992,7 @@ export default function CashierPOS() {
             <div className="h-8 w-px bg-border mx-2" />
             <Button onClick={() => setIsDailyReportOpen(true)} variant="outline" size="sm" className="font-bold text-xs flex items-center gap-2 border-dashed border-primary/50 text-primary hover:bg-primary/10"><FileText className="h-4 w-4 hidden md:block" /> DAILY REPORT</Button>
             <Button onClick={() => {setIsReceivePaymentOpen(true); setRpCustomerName(''); setRpSelectedCustomer(null); setRpAmount(''); setRpOutstanding([]); setRpTxItems({}); setRpPreview([]); setRpNotes('');}} variant="outline" size="sm" className="font-bold text-xs flex items-center gap-2 border-dashed border-orange-500/50 text-orange-600 hover:bg-orange-50"><HandCoins className="h-4 w-4 hidden md:block" /> RECEIVE</Button>
-            <Button onClick={() => { setIsCustListOpen(true); fetchCustList(); }} variant="outline" size="sm" className="font-bold text-xs flex items-center gap-2 border-dashed border-blue-500/50 text-blue-600 hover:bg-blue-50"><Users className="h-4 w-4 hidden md:block" /> CUSTOMERS</Button>
+            <Button onClick={() => { setIsCustomerListOpen(true); fetchCustomerList(); }} variant="outline" size="sm" className="font-bold text-xs flex items-center gap-2 border-dashed border-blue-500/50 text-blue-600 hover:bg-blue-50"><Users className="h-4 w-4 hidden md:block" /> CUSTOMERS</Button>
             <Button onClick={handleSignOut} variant="destructive" size="sm" className="font-bold text-xs flex items-center gap-2"><LogOut className="h-4 w-4" /> LOGOUT</Button>
           </div>
         </header>
@@ -1827,82 +1846,181 @@ export default function CashierPOS() {
         )}
       </div>
 
-      <Modal isOpen={isCustListOpen} onClose={() => { setIsCustListOpen(false); setCustDetailSelected(null); setCustDetailTransactions([]); setCustDetailTotalOutstanding(0); }} title="Customers with Outstanding Balance" size="lg">
-        <div className="space-y-4">
-          {custDetailSelected ? (
-            <>
-              <div className="flex items-center gap-3 pb-2">
-                <Button variant="ghost" size="sm" className="h-8 px-2 font-bold text-xs" onClick={() => { setCustDetailSelected(null); setCustDetailTransactions([]); setCustDetailTotalOutstanding(0); }}>
-                  <ChevronLeft className="h-4 w-4 mr-1" /> Back
-                </Button>
-                <span className="text-sm font-bold text-muted-foreground">/</span>
-                <span className="font-bold text-sm">{custDetailSelected.name}</span>
-              </div>
-
-              {custDetailLoading ? (
-                <div className="text-center py-12 text-muted-foreground">
-                  <p className="text-sm font-bold">Loading transactions...</p>
-                </div>
-              ) : custDetailTransactions.length === 0 ? (
-                <div className="text-center py-12 text-muted-foreground">
-                  <p className="text-sm font-bold">No transactions found for this customer</p>
-                </div>
-              ) : (
-                <>
-                  <div className="bg-card rounded-xl px-5 py-4 border border-border">
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs font-bold uppercase text-muted-foreground">Total Outstanding Balance</span>
-                      <span className="text-2xl font-black text-red-500">₱{custDetailTotalOutstanding.toFixed(2)}</span>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2 max-h-80 overflow-y-auto">
-                    {custDetailTransactions.map((tx) => (
-                      <div key={tx.id} className="bg-card rounded-xl px-5 py-3 border border-border">
-                        <div className="flex justify-between items-start mb-2">
-                          <div>
-                            <p className="font-mono font-bold text-xs text-muted-foreground">#{tx.id.substring(0, 8).toUpperCase()}</p>
-                            <p className="text-xs text-muted-foreground">{new Date(tx.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p>
-                          </div>
-                          <span className="font-black text-sm text-red-500">₱{tx.outstanding.toFixed(2)}</span>
-                        </div>
-                        {tx.productNames && tx.productNames.length > 0 && (
-                          <p className="text-[10px] text-muted-foreground font-bold mb-2 truncate">{tx.productNames.join(', ')}</p>
-                        )}
-                        <div className="flex justify-between items-center text-[10px]">
-                          <span className="font-bold text-muted-foreground">Total: ₱{(tx.total_amount || 0).toFixed(2)}</span>
-                          <span className={`font-bold uppercase ${tx.status === 'completed' ? 'text-green-600' : 'text-orange-600'}`}>{tx.status}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-            </>
-          ) : custListLoading ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <p className="text-sm font-bold">Loading...</p>
+      <Modal isOpen={isCustomerListOpen} onClose={() => { setIsCustomerListOpen(false); setCustomerSearchQuery(''); }} title="Customers" size="lg">
+        <div className="p-6">
+          <div className="flex items-center justify-between mb-5">
+            <div className="relative flex-1 max-w-sm">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search by name or address..."
+                value={customerSearchQuery}
+                onChange={(e) => setCustomerSearchQuery(e.target.value)}
+                className="pl-10 h-10 font-bold"
+              />
             </div>
-          ) : custListData.length === 0 ? (
+            <Button
+              onClick={() => { setEditingCustomer(null); setCfName(''); setCfAddress(''); setCfTinNumber(''); setCfBalanceOverride('0'); setIsCustomerFormOpen(true); }}
+              className="ml-3 h-10 rounded-2xl font-bold uppercase bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              <UserPlus className="h-4 w-4 mr-2" /> Add Customer
+            </Button>
+          </div>
+
+          {customerListLoading ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <p className="text-sm font-bold">Loading customers...</p>
+            </div>
+          ) : customerListData.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <Users className="h-12 w-12 mx-auto mb-3 opacity-30" />
-              <p className="text-sm font-bold">No customers with outstanding balances</p>
+              <p className="text-sm font-bold">No customers found</p>
             </div>
           ) : (
-            <div className="space-y-2 max-h-96 overflow-y-auto">
-              {custListData.map((c) => (
-                <div key={c.id} className="flex items-center justify-between bg-card rounded-xl px-5 py-4 border border-border hover:border-blue-200 hover:bg-blue-50/50 transition-colors cursor-pointer" onClick={() => fetchCustDetail(c)}>
-                  <div>
-                    <p className="font-bold text-sm">{c.name}</p>
-                    <p className="text-[10px] text-muted-foreground font-bold">{c.tx_count} unpaid transaction{c.tx_count > 1 ? 's' : ''}</p>
+            <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+              {customerListData
+                .filter((c) => {
+                  if (!customerSearchQuery.trim()) return true;
+                  const q = customerSearchQuery.toLowerCase();
+                  return (c.name || '').toLowerCase().includes(q) || (c.address || '').toLowerCase().includes(q);
+                })
+                .map((c) => (
+                  <div key={c.id} className="bg-card rounded-xl px-5 py-4 border border-border hover:border-blue-200 transition-colors">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <p className="font-bold text-sm truncate">{c.name}</p>
+                          {c.tin_number && (
+                            <span className="text-[10px] font-bold text-muted-foreground bg-muted px-2 py-0.5 rounded-full shrink-0">TIN: {c.tin_number}</span>
+                          )}
+                        </div>
+                        {c.address && (
+                          <p className="text-xs text-muted-foreground truncate">{c.address}</p>
+                        )}
+                        <div className="flex items-center gap-3 mt-2">
+                          <div>
+                            <p className="text-[10px] font-bold text-muted-foreground uppercase">Term Balance</p>
+                            <p className="text-xs font-black text-orange-600">₱{c.term_balance.toFixed(2)}</p>
+                          </div>
+                          {(c.balance_override || 0) !== 0 && (
+                            <div>
+                              <p className="text-[10px] font-bold text-muted-foreground uppercase">Override</p>
+                              <p className="text-xs font-black text-blue-600">₱{(c.balance_override || 0).toFixed(2)}</p>
+                            </div>
+                          )}
+                          <div>
+                            <p className="text-[10px] font-bold text-muted-foreground uppercase">Total Balance</p>
+                            <p className={`text-xs font-black ${c.total_balance > 0 ? 'text-red-600' : 'text-green-600'}`}>₱{c.total_balance.toFixed(2)}</p>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 ml-3 shrink-0">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0 text-muted-foreground hover:text-blue-600"
+                          onClick={() => {
+                            setEditingCustomer(c);
+                            setCfName(c.name || '');
+                            setCfAddress(c.address || '');
+                            setCfTinNumber(c.tin_number || '');
+                            setCfBalanceOverride(String(c.balance_override || 0));
+                            setIsCustomerFormOpen(true);
+                          }}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0 text-muted-foreground hover:text-red-600"
+                          onClick={() => deleteCustomer(c.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
                   </div>
-                  <ChevronRight className="h-5 w-5 text-muted-foreground" />
-                </div>
-              ))}
+                ))}
             </div>
           )}
-          <div className="flex justify-end pt-2">
-            <Button variant="ghost" className="h-10 font-bold uppercase" onClick={() => { setIsCustListOpen(false); setCustDetailSelected(null); setCustDetailTransactions([]); setCustDetailTotalOutstanding(0); }}>Close</Button>
+        </div>
+      </Modal>
+
+      <Modal isOpen={isCustomerFormOpen} onClose={() => { setIsCustomerFormOpen(false); setEditingCustomer(null); }} title={editingCustomer ? 'Edit Customer' : 'Add Customer'} size="md">
+        <div className="p-6">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="h-10 w-10 rounded-2xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+              <UserPlus className="h-5 w-5 text-blue-600" />
+            </div>
+            <div>
+              <h2 className="text-lg font-black">{editingCustomer ? 'Edit Customer' : 'New Customer'}</h2>
+              <p className="text-xs text-muted-foreground font-bold">{editingCustomer ? 'Update customer details and balance' : 'Fill in the customer details below'}</p>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold text-muted-foreground uppercase mb-1.5">Customer Name *</label>
+              <Input
+                placeholder="Enter customer name"
+                value={cfName}
+                onChange={(e) => setCfName(e.target.value)}
+                className="h-10 font-bold"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-muted-foreground uppercase mb-1.5">Address</label>
+              <Input
+                placeholder="Enter address (optional)"
+                value={cfAddress}
+                onChange={(e) => setCfAddress(e.target.value)}
+                className="h-10 font-bold"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-muted-foreground uppercase mb-1.5">TIN #</label>
+              <Input
+                placeholder="Enter TIN number (optional)"
+                value={cfTinNumber}
+                onChange={(e) => setCfTinNumber(e.target.value)}
+                className="h-10 font-bold"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-muted-foreground uppercase mb-1.5">Account / Remaining Balance</label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-lg font-black text-muted-foreground">₱</span>
+                <Input
+                  type="number"
+                  placeholder="0.00"
+                  value={cfBalanceOverride}
+                  onChange={(e) => setCfBalanceOverride(e.target.value)}
+                  className="h-12 pl-8 text-lg font-black"
+                  step="0.01"
+                />
+              </div>
+              <p className="text-[10px] text-muted-foreground font-bold mt-1">Manual adjustment. Auto-calculated term balance is added to this value for the total.</p>
+            </div>
+          </div>
+
+          <div className="flex gap-4 mt-8">
+            <Button
+              variant="ghost"
+              className="flex-1 h-12 rounded-2xl font-bold uppercase"
+              onClick={() => { setIsCustomerFormOpen(false); setEditingCustomer(null); }}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="flex-[2] h-12 rounded-2xl font-black uppercase bg-blue-600 hover:bg-blue-700 text-white"
+              onClick={saveCustomer}
+              disabled={cfSaving || !cfName.trim()}
+            >
+              {cfSaving ? 'Saving...' : editingCustomer ? 'Update Customer' : 'Add Customer'}
+            </Button>
           </div>
         </div>
       </Modal>

@@ -63,23 +63,3 @@ CREATE TABLE customers (
 
 -- Add customer_id to transactions
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS customer_id UUID REFERENCES customers(id);
-
--- Insert sample data
--- Sample users
-INSERT INTO users (email, password, role) VALUES 
-('admin@example.com', 'Password123', 'admin'),
-('cashier@example.com', 'Password123', 'cashier');
-
--- Sample products
-INSERT INTO products (name, description, price, category, stock_quantity, barcode) VALUES
-('Wireless Headphones', 'High-quality wireless headphones with noise cancellation', 99.99, 'Electronics', 25, '123456789012'),
-('Smartphone Case', 'Durable case for the latest smartphones', 24.99, 'Accessories', 100, '234567890123'),
-('USB-C Cable', 'Fast charging USB-C cable, 2m length', 12.99, 'Accessories', 75, '345678901234'),
-('Bluetooth Speaker', 'Portable Bluetooth speaker with excellent sound quality', 79.99, 'Electronics', 30, '456789012345'),
-('Laptop Stand', 'Adjustable aluminum laptop stand', 45.99, 'Accessories', 15, '567890123456');
-
--- Sample customers
-INSERT INTO customers (name) VALUES
-('Humphrey Bogart'),
-('Audrey Hepburn'),
-('Marlon Brando');

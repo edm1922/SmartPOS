@@ -47,6 +47,9 @@ export interface TransactionItem {
 export interface Customer {
   id: string;
   name: string;
+  address?: string | null;
+  tin_number?: string | null;
+  balance_override?: number;
   created_at: string;
   updated_at: string;
 }

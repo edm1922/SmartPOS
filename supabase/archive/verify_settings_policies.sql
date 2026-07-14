@@ -17,8 +17,6 @@ WHERE polrelid = 'settings'::regclass;
 
 -- Test 2: Try to insert into settings as an admin user
 -- (This should work if the user with auth.uid() exists in public.users with role='admin')
--- INSERT INTO settings (store_name, store_address, store_phone, tax_rate, currency_code)
--- VALUES ('Test Store', '123 Test Street', '+1 555 123 4567', 10.00, 'PHP');
 
 -- Test 3: Try to update settings as an admin user
 -- (This should work if the user with auth.uid() exists in public.users with role='admin')

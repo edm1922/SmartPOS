@@ -106,6 +106,7 @@ export default function CashierPOS() {
   const [rpPreview, setRpPreview] = useState<Array<{tx: any; allocated: number}>>([]);
   const [rpTxItems, setRpTxItems] = useState<Record<string, string[]>>({});
   const [rpNotes, setRpNotes] = useState('');
+  const [rpCustomerBalanceOverride, setRpCustomerBalanceOverride] = useState(0);
   const [termReceiptData, setTermReceiptData] = useState<any>(null);
   const [isTermReceiptOpen, setIsTermReceiptOpen] = useState(false);
   const [printMode, setPrintMode] = useState<'sale' | 'term' | null>(null);
@@ -705,13 +706,32 @@ export default function CashierPOS() {
         const total = tx.term_remaining_balance || tx.total_amount;
         return paid < total;
       });
+
+      const { data: custData } = await supabase
+        .from('customers')
+        .select('balance_override')
+        .eq('id', customer.id)
+        .single();
+      const override = custData?.balance_override || 0;
+      setRpCustomerBalanceOverride(override);
+      if (override > 0) {
+        outstanding.unshift({
+          id: 'balance_override',
+          total_amount: override,
+          term_remaining_balance: override,
+          term_paid_amount: 0,
+          created_at: new Date().toISOString()
+        });
+      }
+
       setRpOutstanding(outstanding);
-      // Fetch product names for each transaction
-      if (outstanding.length > 0) {
+      // Fetch product names for each transaction (skip synthetic override entry)
+      const realTxIds = outstanding.filter(tx => tx.id !== 'balance_override').map(tx => tx.id);
+      if (realTxIds.length > 0) {
         const { data: items, error: itemsError } = await supabase
           .from('transaction_items')
           .select('transaction_id, products(name)')
-          .in('transaction_id', outstanding.map(tx => tx.id));
+          .in('transaction_id', realTxIds);
         if (!itemsError && items) {
           const itemsMap: Record<string, string[]> = {};
           for (const item of items) {
@@ -785,22 +805,31 @@ export default function CashierPOS() {
         const alloc = Math.min(remaining, owed);
         perTxAlloc[tx.id] = alloc;
 
-        const { error: allocError } = await supabase
-          .from('term_payment_allocations')
-          .insert({
-            term_payment_id: paymentData.id,
-            transaction_id: tx.id,
-            amount: alloc
-          });
-        if (allocError) throw allocError;
+        if (tx.id === 'balance_override') {
+          const newOverrideBalance = owed - alloc;
+          const { error: overrideError } = await supabase
+            .from('customers')
+            .update({ balance_override: newOverrideBalance })
+            .eq('id', rpSelectedCustomer.id);
+          if (overrideError) throw overrideError;
+        } else {
+          const { error: allocError } = await supabase
+            .from('term_payment_allocations')
+            .insert({
+              term_payment_id: paymentData.id,
+              transaction_id: tx.id,
+              amount: alloc
+            });
+          if (allocError) throw allocError;
 
-        const newPaid = (Number(tx.term_paid_amount) || 0) + alloc;
-        const { error: updateError } = await supabase
-          .rpc('update_transaction_term_paid_amount', {
-            p_transaction_id: tx.id,
-            p_term_paid_amount: newPaid
-          });
-        if (updateError) throw updateError;
+          const newPaid = (Number(tx.term_paid_amount) || 0) + alloc;
+          const { error: updateError } = await supabase
+            .rpc('update_transaction_term_paid_amount', {
+              p_transaction_id: tx.id,
+              p_term_paid_amount: newPaid
+            });
+          if (updateError) throw updateError;
+        }
 
         remaining -= alloc;
       }
@@ -838,6 +867,7 @@ export default function CashierPOS() {
       setRpPreview([]);
       setRpReferenceNumber('');
       setRpNotes('');
+      setRpCustomerBalanceOverride(0);
       setTimeout(() => setSuccessMessage(''), 5000);
     } catch (error: any) {
       console.error('Term payment error:', error);
@@ -1549,21 +1579,26 @@ export default function CashierPOS() {
 
               {rpOutstanding.length > 0 && (
                 <div>
-                  <label className="block text-xs font-bold text-muted-foreground uppercase mb-2">Term Transactions</label>
+                  <label className="block text-xs font-bold text-muted-foreground uppercase mb-2">Outstanding</label>
                   <div className="space-y-2 max-h-64 overflow-y-auto mb-4">
                     {rpOutstanding.map((tx) => {
                       const owed = (tx.term_remaining_balance || tx.total_amount) - (tx.term_paid_amount || 0);
+                      const isOverride = tx.id === 'balance_override';
                       const productNames = rpTxItems[tx.id] || [];
                       return (
-                        <div key={tx.id} className="bg-card rounded-xl p-3 border border-border">
+                        <div key={tx.id} className={`rounded-xl p-3 border ${isOverride ? 'bg-blue-50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800' : 'bg-card border-border'}`}>
                           <div className="flex justify-between items-start">
                             <div>
-                              <p className="text-xs font-mono font-bold text-muted-foreground">#{tx.id.slice(0, 8).toUpperCase()}</p>
-                              <p className="text-[10px] text-muted-foreground">{new Date(tx.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p>
+                              {isOverride ? (
+                                <p className="text-xs font-bold text-blue-600">Manual Balance</p>
+                              ) : (
+                                <p className="text-xs font-mono font-bold text-muted-foreground">#{tx.id.slice(0, 8).toUpperCase()}</p>
+                              )}
+                              <p className="text-[10px] text-muted-foreground">{isOverride ? 'Set in Customers modal' : new Date(tx.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p>
                             </div>
                             <span className="text-sm font-black text-red-500">₱{owed.toFixed(2)} remaining</span>
                           </div>
-                          {productNames.length > 0 && (
+                          {!isOverride && productNames.length > 0 && (
                             <p className="text-[10px] text-muted-foreground font-bold mt-1 truncate">{productNames.join(', ')}</p>
                           )}
                         </div>
@@ -1753,13 +1788,15 @@ export default function CashierPOS() {
                   <tbody>
                     {termReceiptData.allocations.map((a: any, i: number) => (
                       <tr key={i}>
-                        <td className="border border-gray-200 px-2 py-1 font-mono font-bold text-gray-800 text-[10px]">#{a.transactionId.substring(0, 8)}</td>
+                        <td className="border border-gray-200 px-2 py-1 font-mono font-bold text-gray-800 text-[10px]">
+                          {a.transactionId === 'balance_override' ? 'Manual Balance' : `#${a.transactionId.substring(0, 8)}`}
+                        </td>
                         <td className="border border-gray-200 px-2 py-1 text-right font-black text-green-600">{formatPrice(a.amount)}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
-                <p className="text-[9px] text-gray-400 font-bold mt-1">FIFO allocation — oldest transactions paid first</p>
+                <p className="text-[9px] text-gray-400 font-bold mt-1">FIFO allocation — manual balance paid first, then oldest transactions</p>
               </div>
 
               <div className="bg-gray-50 p-6 rounded-2xl mb-8 space-y-3">

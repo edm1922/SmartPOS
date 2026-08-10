@@ -27,10 +27,13 @@ interface Transaction {
   id: string;
   cashier_id: string;
   total_amount: number;
+  down_payment?: number;
   payment_method: string;
   status?: string;
   created_at: string;
   cashier?: { email: string };
+  customer_name?: string;
+  is_down_payment?: boolean;
   transaction_items?: Array<{
     quantity: number;
     products?: { name: string };
@@ -74,7 +77,7 @@ export default function Reports() {
           
         if (transactionsError) throw transactionsError;
         
-        await processAndSetTransactions(transactionsData);
+        await processAndSetTransactions(transactionsData, startDate, endDate);
         setIsLoading(false);
         return;
       }
@@ -102,7 +105,7 @@ export default function Reports() {
 
       if (transactionsError) throw transactionsError;
 
-      await processAndSetTransactions(transactionsData);
+      await processAndSetTransactions(transactionsData, startDate);
     } catch (error) {
       console.error('Error fetching report data:', error);
     } finally {
@@ -110,21 +113,68 @@ export default function Reports() {
     }
   };
 
-  const processAndSetTransactions = async (transactionsData: any[] | null) => {
+  const processAndSetTransactions = async (transactionsData: any[] | null, startDate: Date, endDate?: Date) => {
     // Fetch all cashiers and users to map them manually
-    const [ { data: cashiersData }, { data: usersData } ] = await Promise.all([
+    const [ { data: cashiersData }, { data: usersData }, { data: customersData } ] = await Promise.all([
       supabase.from('cashiers').select('id, username, email'),
-      supabase.from('users').select('id, email')
+      supabase.from('users').select('id, email'),
+      supabase.from('customers').select('id, name')
     ]);
 
     const cashierMap = new Map();
     (cashiersData || []).forEach(c => cashierMap.set(c.id, c.username || c.email));
     (usersData || []).forEach(u => cashierMap.set(u.id, u.email));
 
-    setTransactions((transactionsData || []).map(t => ({
-      ...t,
-      cashier: { email: cashierMap.get(t.cashier_id) || 'System' }
-    })));
+    const customerMap = new Map();
+    (customersData || []).forEach(c => customerMap.set(c.id, c.name));
+
+    // Fetch term payments (downpayments) in the same range
+    let termQuery = supabase
+      .from('term_payments')
+      .select('*')
+      .gte('created_at', startDate.toISOString())
+      .order('created_at', { ascending: false });
+    if (endDate) termQuery = termQuery.lte('created_at', endDate.toISOString());
+    const { data: termPayments } = await termQuery;
+
+    const rows = buildReportRows(transactionsData || [], termPayments || [], cashierMap, customerMap);
+    setTransactions(rows);
+  };
+
+  const buildReportRows = (
+    transactionsData: any[],
+    termPayments: any[],
+    cashierMap: Map<any, any>,
+    customerMap: Map<any, any>
+  ): Transaction[] => {
+    const rows: Transaction[] = [];
+
+    for (const t of transactionsData) {
+      const isTerm = t.payment_method === 'term';
+      const downPayment = Number(t.down_payment || 0);
+      if (isTerm && downPayment <= 0) continue;
+      rows.push({
+        ...t,
+        total_amount: isTerm ? downPayment : Number(t.total_amount || 0),
+        cashier: { email: cashierMap.get(t.cashier_id) || 'System' }
+      });
+    }
+
+    for (const p of termPayments) {
+      rows.push({
+        id: p.id,
+        cashier_id: p.cashier_id,
+        total_amount: p.amount,
+        payment_method: 'downpayment',
+        status: 'completed',
+        created_at: p.created_at,
+        cashier: { email: cashierMap.get(p.cashier_id) || 'System' },
+        customer_name: customerMap.get(p.customer_id) || 'Unknown',
+        is_down_payment: true
+      });
+    }
+
+    return rows.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
   };
 
   const stats = useMemo(() => {
@@ -160,6 +210,7 @@ export default function Reports() {
       case 'gcash':
       case 'card': return <CreditCard className="h-4 w-4 mr-1" />;
       case 'term': return <CalendarDays className="h-4 w-4 mr-1" />;
+      case 'downpayment':
       case 'term_payment': return <HandCoins className="h-4 w-4 mr-1" />;
       default: return <Wallet className="h-4 w-4 mr-1" />;
     }
@@ -175,7 +226,9 @@ export default function Reports() {
     const rows = transactions.map(t => [
       new Date(t.created_at).toLocaleString(),
       t.cashier?.email || 'System',
-      t.transaction_items?.map((item) => `${item.quantity}x ${item.products?.name || 'Unknown'}`).join('; ') || '',
+      t.is_down_payment
+        ? `Downpayment from ${t.customer_name || 'Unknown'}`
+        : t.transaction_items?.map((item) => `${item.quantity}x ${item.products?.name || 'Unknown'}`).join('; ') || '',
       t.payment_method,
       t.total_amount.toString(),
       t.status || 'Completed'
@@ -250,7 +303,7 @@ export default function Reports() {
       {/* Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard
-          title="Total Revenue"
+          title="Money Collected"
           value={formatPrice(stats.totalSales)}
           icon={<DollarSign className="h-5 w-5 text-green-500" />}
           loading={isLoading}
@@ -322,9 +375,15 @@ export default function Reports() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <div className="text-xs text-gray-500 max-w-[200px] truncate" title={t.transaction_items?.map(ti => `${ti.quantity}x ${ti.products?.name || 'Item'}`).join(', ') || ''}>
-                            {t.transaction_items?.map(ti => `${ti.quantity}x ${ti.products?.name || 'Item'}`).join(', ') || '-'}
-                          </div>
+                          {t.is_down_payment ? (
+                            <div className="text-xs text-gray-500 max-w-[200px] truncate" title={t.customer_name}>
+                              <span className="font-bold text-gray-700 dark:text-gray-300">Downpayment from</span> {t.customer_name}
+                            </div>
+                          ) : (
+                            <div className="text-xs text-gray-500 max-w-[200px] truncate" title={t.transaction_items?.map(ti => `${ti.quantity}x ${ti.products?.name || 'Item'}`).join(', ') || ''}>
+                              {t.transaction_items?.map(ti => `${ti.quantity}x ${ti.products?.name || 'Item'}`).join(', ') || '-'}
+                            </div>
+                          )}
                         </TableCell>
                         <TableCell>
                           <Badge variant="outline" className="capitalize flex w-fit items-center px-2 py-0.5">

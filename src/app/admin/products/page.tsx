@@ -31,7 +31,8 @@ import {
   Layers,
   AlertTriangle,
   CheckCircle2,
-  Box
+  Box,
+  FileDown
 } from 'lucide-react';
 import { PRODUCT_CATEGORIES } from '@/lib/constants';
 import {
@@ -122,6 +123,39 @@ export default function ProductManagement() {
     setIsBarcodeModalOpen(true);
   };
 
+  const handleExportProducts = () => {
+    if (products.length === 0) return;
+
+    const headers = ['ID', 'Name', 'Description', 'Category', 'Price', 'Stock Quantity', 'Barcode', 'Image URL', 'Created'];
+
+    const rows = products.map(p => [
+      p.id,
+      p.name,
+      p.description || '',
+      p.category || '',
+      p.price.toString(),
+      p.stock_quantity.toString(),
+      p.barcode || '',
+      p.image_url || '',
+      p.created_at
+    ]);
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `product-backup-${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const filteredProducts = useMemo(() => {
     return products.filter(product => {
       const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -142,10 +176,21 @@ export default function ProductManagement() {
       {/* Header Section */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white dark:bg-gray-900 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800">
         <div>
-          <h1 className="text-3xl font-extrabold tracking-tight flex items-center gap-2">
-            <Package className="h-8 w-8 text-primary" />
-            Inventory Management
-          </h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-3xl font-extrabold tracking-tight flex items-center gap-2">
+              <Package className="h-8 w-8 text-primary" />
+              Inventory Management
+            </h1>
+            <Button
+              onClick={handleExportProducts}
+              variant="outline"
+              size="icon"
+              title="Export product list with quantities (backup)"
+              className="h-10 w-10 rounded-xl hover:text-primary hover:border-primary/50"
+            >
+              <FileDown className="h-5 w-5" />
+            </Button>
+          </div>
           <p className="text-muted-foreground mt-1 text-sm">
             Control your stock, pricing, and product barcodes.
           </p>

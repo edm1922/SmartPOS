@@ -10,7 +10,7 @@ import {
   TrendingUp,
   Users,
   Package,
-  DollarSign,
+  PhilippinePeso,
   Activity,
   ArrowUpRight,
   Clock,
@@ -124,7 +124,7 @@ export default function AdminDashboard() {
         <DashboardCard
           title="Lifetime Revenue"
           value={formatPrice(stats.totalRevenue)}
-          icon={<DollarSign className="h-5 w-5 text-green-600" />}
+          icon={<PhilippinePeso className="h-5 w-5 text-green-600" />}
           trend="+8.2% all-time"
           trendUp
           loading={loading}

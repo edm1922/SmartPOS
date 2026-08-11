@@ -97,7 +97,7 @@ export default function CashierManagement() {
             Manage your store staff, access permissions, and account status.
           </p>
         </div>
-        <Button onClick={() => setIsModalOpen(true)} className="bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/20 transition-all active:scale-95 flex items-center gap-2 px-6">
+        <Button onClick={() => setIsModalOpen(true)} className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all active:scale-95 flex items-center gap-2 px-6">
           <UserPlus className="h-4 w-4" /> Add Cashier
         </Button>
       </div>

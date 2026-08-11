@@ -195,7 +195,7 @@ export default function ProductManagement() {
             Control your stock, pricing, and product barcodes.
           </p>
         </div>
-        <Button onClick={handleAddProduct} className="bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/20 transition-all active:scale-95 flex items-center gap-2 px-6">
+        <Button onClick={handleAddProduct} className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all active:scale-95 flex items-center gap-2 px-6">
           <Plus className="h-4 w-4" /> Add New Product
         </Button>
       </div>
@@ -301,7 +301,7 @@ export default function ProductManagement() {
                             onClick={() => handleShowBarcode(product)}
                             variant="secondary"
                             size="sm"
-                            className="h-8 text-[10px] font-bold gap-1.5 uppercase hover:bg-primary hover:text-white transition-all shadow-sm"
+                            className="h-8 text-[10px] font-bold gap-1.5 uppercase hover:bg-primary hover:text-primary-foreground transition-all shadow-sm"
                           >
                             <Barcode className="h-3 w-3" /> View Code
                           </Button>

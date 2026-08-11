@@ -32,7 +32,9 @@ import {
   AlertTriangle,
   CheckCircle2,
   Box,
-  FileDown
+  FileDown,
+  FileUp,
+  X
 } from 'lucide-react';
 import { PRODUCT_CATEGORIES } from '@/lib/constants';
 import {
@@ -68,6 +70,8 @@ export default function ProductManagement() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const barcodeRef = useRef<SVGSVGElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importSummary, setImportSummary] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   useEffect(() => {
     const fetchUserAndProducts = async () => {
@@ -156,6 +160,152 @@ export default function ProductManagement() {
     document.body.removeChild(link);
   };
 
+  const parseCSV = (text: string): string[][] => {
+    const rows: string[][] = [];
+    let row: string[] = [];
+    let field = '';
+    let inQuotes = false;
+
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i];
+      const next = text[i + 1];
+
+      if (inQuotes) {
+        if (char === '"' && next === '"') {
+          field += '"';
+          i++;
+        } else if (char === '"') {
+          inQuotes = false;
+        } else {
+          field += char;
+        }
+      } else if (char === '"') {
+        inQuotes = true;
+      } else if (char === ',') {
+        row.push(field);
+        field = '';
+      } else if (char === '\n' || char === '\r') {
+        if (char === '\r' && next === '\n') i++;
+        row.push(field);
+        rows.push(row);
+        row = [];
+        field = '';
+      } else {
+        field += char;
+      }
+    }
+
+    if (field !== '' || row.length > 0) {
+      row.push(field);
+      rows.push(row);
+    }
+
+    return rows.filter(r => r.some(cell => cell.trim() !== ''));
+  };
+
+  const handleImportProducts = async (file: File) => {
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const rows = parseCSV(text);
+      if (rows.length < 2) {
+        setImportSummary({ type: 'error', message: 'CSV file is empty or missing a header row.' });
+        return;
+      }
+
+      const headers = rows[0].map(h => h.trim().toLowerCase().replace(/\s+/g, '_'));
+      const colIndex = (name: string) => headers.indexOf(name);
+      const required = ['name', 'price', 'stock_quantity'];
+      for (const req of required) {
+        if (colIndex(req) === -1) {
+          setImportSummary({ type: 'error', message: `Missing required column "${req.replace(/_/g, ' ')}".` });
+          return;
+        }
+      }
+
+      const colId = colIndex('id');
+      const colName = colIndex('name');
+      const colDescription = colIndex('description');
+      const colCategory = colIndex('category');
+      const colPrice = colIndex('price');
+      const colStock = colIndex('stock_quantity');
+      const colBarcode = colIndex('barcode');
+      const colImage = colIndex('image_url');
+
+      const toImport: any[] = [];
+      let skipped = 0;
+      let skippedReasons: string[] = [];
+
+      for (let i = 1; i < rows.length; i++) {
+        const cells = rows[i];
+        const get = (idx: number) => (idx === -1 ? '' : (cells[idx] || '').trim());
+
+        const name = get(colName);
+        const price = Number(get(colPrice));
+        const stock = Number(get(colStock));
+
+        if (!name) {
+          skipped++;
+          skippedReasons.push(`Row ${i + 1}: missing name`);
+          continue;
+        }
+        if (isNaN(price) || price < 0) {
+          skipped++;
+          skippedReasons.push(`Row ${i + 1} ("${name}"): invalid price`);
+          continue;
+        }
+        if (isNaN(stock) || stock < 0) {
+          skipped++;
+          skippedReasons.push(`Row ${i + 1} ("${name}"): invalid stock quantity`);
+          continue;
+        }
+
+        const product: any = {
+          id: colId !== -1 && get(colId) ? get(colId) : undefined,
+          name,
+          description: get(colDescription) || null,
+          category: get(colCategory) || null,
+          price,
+          stock_quantity: stock,
+          barcode: get(colBarcode) || null,
+          image_url: get(colImage) || null,
+        };
+        if (!product.id) delete product.id;
+
+        toImport.push(product);
+      }
+
+      if (toImport.length === 0) {
+        setImportSummary({ type: 'error', message: `No valid rows to import${skipped > 0 ? ` (${skipped} skipped).` : '.'}` });
+        return;
+      }
+
+      const { error } = await supabaseDB.upsertProducts(toImport);
+      if (error) throw new Error(error);
+
+      if (user) {
+        await supabaseDB.logActivity(user.id, 'Products Imported', `Imported ${toImport.length} product(s) from CSV${skipped > 0 ? ` (${skipped} skipped)` : ''}`);
+      }
+
+      setImportSummary({
+        type: 'success',
+        message: `Import complete: ${toImport.length} product(s) imported${skipped > 0 ? `, ${skipped} skipped` : ''}.${skippedReasons.length ? ` Skipped: ${skippedReasons.join('; ')}` : ''}`,
+      });
+      fetchProducts();
+    } catch (error: any) {
+      console.error('Error importing products:', error);
+      setImportSummary({ type: 'error', message: error.message || 'Failed to import products.' });
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      handleImportProducts(file);
+    }
+    e.target.value = '';
+  };
+
   const filteredProducts = useMemo(() => {
     return products.filter(product => {
       const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -190,7 +340,23 @@ export default function ProductManagement() {
             >
               <FileDown className="h-5 w-5" />
             </Button>
+            <Button
+              onClick={() => fileInputRef.current?.click()}
+              variant="outline"
+              size="icon"
+              title="Import product list from CSV (restore backup)"
+              className="h-10 w-10 rounded-xl hover:text-primary hover:border-primary/50"
+            >
+              <FileUp className="h-5 w-5" />
+            </Button>
           </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv,text/csv"
+            className="hidden"
+            onChange={handleFileChange}
+          />
           <p className="text-muted-foreground mt-1 text-sm">
             Control your stock, pricing, and product barcodes.
           </p>
@@ -233,6 +399,29 @@ export default function ProductManagement() {
         <Badge variant="destructive" className="w-full py-2 flex items-center h-auto justify-center gap-2 rounded-xl">
           <AlertTriangle className="h-4 w-4" /> {error}
         </Badge>
+      )}
+
+      {importSummary && (
+        <div className="w-full">
+          <Badge
+            variant={importSummary.type === 'success' ? 'secondary' : 'destructive'}
+            className={`w-full py-2 flex items-center h-auto gap-2 rounded-xl ${
+              importSummary.type === 'success'
+                ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                : ''
+            }`}
+          >
+            {importSummary.type === 'success' ? <CheckCircle2 className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
+            <span className="flex-1">{importSummary.message}</span>
+            <button
+              onClick={() => setImportSummary(null)}
+              className="p-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+              aria-label="Dismiss"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </Badge>
+        </div>
       )}
 
       {/* Products Table */}

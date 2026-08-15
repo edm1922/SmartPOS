@@ -1,13 +1,15 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { supabase } from '@/lib/supabaseClient';
+import { supabase, supabaseDB } from '@/lib/supabaseClient';
 import { useCurrency } from '@/context/CurrencyContext';
 import { Card, CardHeader, CardContent } from '@/components/ui/Card';
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@/components/ui/Table';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Modal } from '@/components/ui/Modal';
+import { Input } from '@/components/ui/input';
 import {
   TrendingUp,
   ShoppingCart,
@@ -20,7 +22,14 @@ import {
   CreditCard,
   Banknote,
   CalendarDays,
-  HandCoins
+  HandCoins,
+  Trash2,
+  Eye,
+  EyeOff,
+  KeyRound,
+  AlertTriangle,
+  Loader2,
+  CheckCircle2
 } from 'lucide-react';
 
 interface Transaction {
@@ -49,6 +58,21 @@ export default function Reports() {
   const [dateRange, setDateRange] = useState<DateRange>('week');
   const [customStartDate, setCustomStartDate] = useState(new Date().toISOString().split('T')[0]);
   const [customEndDate, setCustomEndDate] = useState(new Date().toISOString().split('T')[0]);
+  const [user, setUser] = useState<any>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Transaction | null>(null);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [showDeletePassword, setShowDeletePassword] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteSuccess, setDeleteSuccess] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) setUser(session.user);
+    };
+    fetchSession();
+  }, []);
 
   useEffect(() => {
     fetchData();
@@ -252,6 +276,79 @@ export default function Reports() {
     document.body.removeChild(link);
   };
 
+  const getProductsText = (t: Transaction) => {
+    if (t.is_down_payment) return `Downpayment from ${t.customer_name || 'Unknown'}`;
+    return t.transaction_items?.map((item) => `${item.quantity}x ${item.products?.name || 'Unknown'}`).join(', ') || '-';
+  };
+
+  const handleOpenDeleteModal = (t: Transaction) => {
+    setDeleteTarget(t);
+    setDeletePassword('');
+    setShowDeletePassword(false);
+    setDeleteError(null);
+  };
+
+  const handleCloseDeleteModal = () => {
+    if (isDeleting) return;
+    setDeleteTarget(null);
+    setDeletePassword('');
+    setShowDeletePassword(false);
+    setDeleteError(null);
+  };
+
+  const handleDeleteTransaction = async () => {
+    if (!deleteTarget) return;
+    if (!deletePassword) {
+      setDeleteError('Please enter your password to confirm.');
+      return;
+    }
+    if (!user?.email) {
+      setDeleteError('Unable to verify your session. Please sign out and sign back in.');
+      return;
+    }
+
+    setIsDeleting(true);
+    setDeleteError(null);
+    try {
+      // Verify the admin's password before allowing the destructive action
+      const { error: authError } = await supabase.auth.signInWithPassword({
+        email: user.email,
+        password: deletePassword,
+      });
+      if (authError) {
+        setDeleteError('Incorrect password. Deletion cancelled.');
+        setIsDeleting(false);
+        return;
+      }
+
+      if (deleteTarget.is_down_payment) {
+        const { error } = await supabase.rpc('undo_term_payment', {
+          p_payment_id: deleteTarget.id,
+        });
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.rpc('delete_transaction', {
+          p_transaction_id: deleteTarget.id,
+        });
+        if (error) throw error;
+      }
+
+      const label = `${deleteTarget.cashier?.email || 'System'} | ${formatDate(deleteTarget.created_at)} | ${formatPrice(deleteTarget.total_amount)}`;
+      await supabaseDB.logActivity(user.id, 'Transaction Deleted', `Deleted ${deleteTarget.is_down_payment ? 'downpayment' : 'transaction'} (${label})`);
+
+      const target = deleteTarget;
+      handleCloseDeleteModal();
+      setDeleteSuccess(`Transaction ${formatPrice(target.total_amount)} deleted permanently.`);
+      setTimeout(() => setDeleteSuccess(null), 5000);
+      fetchData();
+    } catch (error: any) {
+      console.error('Delete transaction error:', error);
+      setDeleteError(error.message || 'Failed to delete transaction.');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto p-4 md:p-6">
       {/* Header Section */}
@@ -358,6 +455,7 @@ export default function Reports() {
                       <TableHead>Products</TableHead>
                       <TableHead>Payment Method</TableHead>
                       <TableHead className="text-right">Total Amount</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -393,6 +491,17 @@ export default function Reports() {
                         </TableCell>
                         <TableCell className="text-right font-bold text-gray-900 dark:text-white">
                           {formatPrice(t.total_amount)}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            onClick={() => handleOpenDeleteModal(t)}
+                            variant="outline"
+                            size="icon"
+                            title={`Delete ${t.is_down_payment ? 'downpayment' : 'transaction'} (requires admin password)`}
+                            className="h-8 w-8 rounded-xl text-red-500 hover:text-red-700 hover:border-red-500/50"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -484,6 +593,115 @@ export default function Reports() {
           </Card>
         </div>
       </div>
+
+      {deleteSuccess && (
+        <div className="fixed bottom-6 right-6 z-50">
+          <div className="flex items-center gap-2 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-4 py-3 rounded-xl shadow-lg border border-green-200 dark:border-green-800 animate-in slide-in-from-bottom duration-300">
+            <CheckCircle2 className="h-5 w-5" />
+            <span className="text-sm font-bold">{deleteSuccess}</span>
+          </div>
+        </div>
+      )}
+
+      <Modal
+        isOpen={!!deleteTarget}
+        onClose={handleCloseDeleteModal}
+        title={deleteTarget?.is_down_payment ? 'Delete Downpayment' : 'Delete Transaction'}
+        size="sm"
+      >
+        {deleteTarget && (
+          <div className="space-y-5">
+            <div className="flex items-start gap-3 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-xl p-4">
+              <AlertTriangle className="h-5 w-5 text-red-500 shrink-0 mt-0.5" />
+              <div className="text-sm">
+                <p className="font-bold text-red-700 dark:text-red-400">
+                  This permanently deletes this {deleteTarget.is_down_payment ? 'downpayment' : 'transaction'}.
+                </p>
+                <p className="text-red-600/80 dark:text-red-400/80 mt-1 text-xs">
+                  Product stock is restored and the record is removed from all reports. This cannot be undone.
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-2 text-sm bg-gray-50 dark:bg-gray-900 rounded-xl p-4">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Date</span>
+                <span className="font-semibold">{new Date(deleteTarget.created_at).toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Cashier</span>
+                <span className="font-semibold">{deleteTarget.cashier?.email || 'System'}</span>
+              </div>
+              <div className="flex justify-between gap-4">
+                <span className="text-muted-foreground shrink-0">Details</span>
+                <span className="font-semibold text-right">{getProductsText(deleteTarget)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Method</span>
+                <span className="font-semibold capitalize">{deleteTarget.payment_method}</span>
+              </div>
+              <div className="flex justify-between pt-2 border-t border-gray-200 dark:border-gray-700">
+                <span className="text-muted-foreground">Amount</span>
+                <span className="font-black text-red-600 dark:text-red-400">{formatPrice(deleteTarget.total_amount)}</span>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium flex items-center gap-2 text-gray-700 dark:text-gray-300">
+                <KeyRound className="h-4 w-4 text-muted-foreground" />
+                Enter admin password to confirm
+              </label>
+              <div className="relative">
+                <Input
+                  type={showDeletePassword ? 'text' : 'password'}
+                  placeholder="Admin password"
+                  value={deletePassword}
+                  onChange={(e) => setDeletePassword(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !isDeleting) handleDeleteTransaction();
+                  }}
+                  className="pr-10"
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowDeletePassword(!showDeletePassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-primary transition-colors"
+                  aria-label={showDeletePassword ? 'Hide password' : 'Show password'}
+                >
+                  {showDeletePassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+              {deleteError && (
+                <p className="text-xs font-semibold text-red-500 flex items-center gap-1 mt-1">
+                  <AlertTriangle className="h-3 w-3" /> {deleteError}
+                </p>
+              )}
+            </div>
+
+            <div className="flex justify-end space-x-3 pt-2">
+              <Button variant="outline" onClick={handleCloseDeleteModal} disabled={isDeleting}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleDeleteTransaction}
+                disabled={isDeleting || !deletePassword}
+                className="bg-red-600 hover:bg-red-700 text-white shadow-sm"
+              >
+                {isDeleting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="h-4 w-4 mr-2" /> Delete {deleteTarget.is_down_payment ? 'Downpayment' : 'Transaction'}
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

@@ -322,15 +322,77 @@ export default function Reports() {
       }
 
       if (deleteTarget.is_down_payment) {
-        const { error } = await supabase.rpc('undo_term_payment', {
+        const { error: rpcError } = await supabase.rpc('undo_term_payment', {
           p_payment_id: deleteTarget.id,
         });
-        if (error) throw error;
+        if (rpcError) {
+          console.warn('RPC undo_term_payment failed, using fallback direct deletion:', rpcError);
+          const { data: allocs } = await supabase
+            .from('term_payment_allocations')
+            .select('transaction_id, amount')
+            .eq('term_payment_id', deleteTarget.id);
+
+          if (allocs && allocs.length > 0) {
+            for (const alloc of allocs) {
+              const { data: tx } = await supabase
+                .from('transactions')
+                .select('term_paid_amount')
+                .eq('id', alloc.transaction_id)
+                .single();
+              if (tx) {
+                const newAmount = Math.max(0, (Number(tx.term_paid_amount) || 0) - Number(alloc.amount));
+                await supabase
+                  .from('transactions')
+                  .update({ term_paid_amount: newAmount })
+                  .eq('id', alloc.transaction_id);
+              }
+            }
+          }
+
+          await supabase.from('term_payment_allocations').delete().eq('term_payment_id', deleteTarget.id);
+          const { error: deleteErr } = await supabase.from('term_payments').delete().eq('id', deleteTarget.id);
+          if (deleteErr) throw deleteErr;
+        }
       } else {
-        const { error } = await supabase.rpc('delete_transaction', {
+        const { error: rpcError } = await supabase.rpc('delete_transaction', {
           p_transaction_id: deleteTarget.id,
         });
-        if (error) throw error;
+        if (rpcError) {
+          console.warn('RPC delete_transaction failed, using fallback direct deletion:', rpcError);
+          // Restore stock for each item in the transaction
+          const { data: items } = await supabase
+            .from('transaction_items')
+            .select('product_id, quantity')
+            .eq('transaction_id', deleteTarget.id);
+
+          if (items && items.length > 0) {
+            for (const item of items) {
+              if (item.product_id) {
+                const { data: prod } = await supabase
+                  .from('products')
+                  .select('stock_quantity')
+                  .eq('id', item.product_id)
+                  .single();
+                if (prod) {
+                  await supabase
+                    .from('products')
+                    .update({ stock_quantity: (Number(prod.stock_quantity) || 0) + Number(item.quantity) })
+                    .eq('id', item.product_id);
+                }
+              }
+            }
+          }
+
+          // Remove term payment allocations
+          await supabase.from('term_payment_allocations').delete().eq('transaction_id', deleteTarget.id);
+
+          // Remove transaction items
+          await supabase.from('transaction_items').delete().eq('transaction_id', deleteTarget.id);
+
+          // Remove transaction
+          const { error: deleteErr } = await supabase.from('transactions').delete().eq('id', deleteTarget.id);
+          if (deleteErr) throw deleteErr;
+        }
       }
 
       const label = `${deleteTarget.cashier?.email || 'System'} | ${formatDate(deleteTarget.created_at)} | ${formatPrice(deleteTarget.total_amount)}`;

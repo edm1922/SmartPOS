@@ -25,3 +25,8 @@ $$;
 
 COMMENT ON FUNCTION public.undo_term_payment IS
   'Reverses a term payment: reverts term_paid_amount on transactions and deletes the payment record. Owner-privileges to bypass RLS.';
+
+GRANT EXECUTE ON FUNCTION public.undo_term_payment(UUID) TO authenticated, anon, service_role;
+
+NOTIFY pgrst, 'reload schema';
+

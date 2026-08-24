@@ -40,3 +40,8 @@ $$;
 
 COMMENT ON FUNCTION public.delete_transaction IS
   'Permanently deletes an erroneous transaction: restores stock, clears term allocations, and removes the record. Admin-only via SECURITY DEFINER.';
+
+GRANT EXECUTE ON FUNCTION public.delete_transaction(UUID) TO authenticated, anon, service_role;
+
+NOTIFY pgrst, 'reload schema';
+

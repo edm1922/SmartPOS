@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import { KeyRound, CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react';
 import { supabase, supabaseAuth } from '@/lib/supabaseClient';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent } from '@/components/ui/Card';
@@ -30,18 +31,8 @@ export default function ResetPassword() {
         const hashAccessToken = hashParams.get('access_token');
         const hashRefreshToken = hashParams.get('refresh_token');
 
-        console.error('Recovery URL debug:', {
-          hasCode: !!code,
-          hasHashAccessToken: !!hashAccessToken,
-          hasHashRefreshToken: !!hashRefreshToken,
-          pathname: window.location.pathname,
-          fullUrl: window.location.href,
-        });
-
         if (code) {
-          console.error('Attempting exchangeCodeForSession');
           const { data, error } = await supabase.auth.exchangeCodeForSession(code);
-          console.error('exchangeCodeForSession result:', { data: !!data, error });
           if (!error && !cancelled) {
             sessionReadyRef.current = true;
             setSessionReady(true);
@@ -51,12 +42,10 @@ export default function ResetPassword() {
         }
 
         if (hashAccessToken && hashRefreshToken) {
-          console.error('Attempting setSession with hash tokens');
           const { data, error } = await supabase.auth.setSession({
             access_token: hashAccessToken,
             refresh_token: hashRefreshToken,
           });
-          console.error('setSession result:', { data: !!data, error });
           if (!error && !cancelled) {
             sessionReadyRef.current = true;
             setSessionReady(true);
@@ -65,19 +54,15 @@ export default function ResetPassword() {
           }
         }
 
-        console.error('Checking existing session');
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        console.error('getSession result:', { hasSession: !!session, error: sessionError });
+        const { data: { session } } = await supabase.auth.getSession();
         if (session && !cancelled) {
           sessionReadyRef.current = true;
           setSessionReady(true);
           return;
         }
 
-        console.error('Listening for auth state change');
         const { data: { subscription } } = supabase.auth.onAuthStateChange(
           async (event, session) => {
-            console.error('Auth state change event:', event, { hasSession: !!session });
             if ((event === 'PASSWORD_RECOVERY' || event === 'SIGNED_IN') && session && !cancelled) {
               sessionReadyRef.current = true;
               setSessionReady(true);
@@ -90,7 +75,6 @@ export default function ResetPassword() {
           subscription.unsubscribe();
         };
       } catch (err) {
-        console.error('Recovery handler error:', err);
         if (!cancelled) {
           setPageError('An unexpected error occurred. Please try the link again.');
         }
@@ -101,7 +85,6 @@ export default function ResetPassword() {
 
     const timeout = setTimeout(() => {
       if (!sessionReadyRef.current && !cancelled) {
-        console.error('Recovery session timeout');
         setPageError('Failed to establish recovery session. Please try the link from your email again.');
       }
     }, 15000);
@@ -133,7 +116,6 @@ export default function ResetPassword() {
       if (error) throw new Error(error);
       
       setSuccess(true);
-      // Wait a bit then redirect to login
       setTimeout(() => {
         router.push('/auth/admin/login');
       }, 3000);
@@ -145,144 +127,128 @@ export default function ResetPassword() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-background text-foreground flex flex-col justify-center py-12 sm:px-6 lg:px-8 relative selection:bg-primary selection:text-primary-foreground">
+      {/* Top Bar Theme Toggle */}
+      <div className="absolute top-4 right-4 z-10">
+        <ThemeToggle />
+      </div>
+
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <div className="flex justify-center">
-          <div className="bg-primary-600 w-16 h-16 rounded-2xl flex items-center justify-center shadow-lg">
-            <svg className="h-8 w-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-            </svg>
+          <div className="bg-primary text-primary-foreground w-14 h-14 rounded-2xl flex items-center justify-center shadow-sm">
+            <KeyRound className="h-7 w-7" />
           </div>
         </div>
-        <div className="mt-6 text-center">
-          <h2 className="text-3xl font-extrabold text-gray-900 dark:text-white">
+        <div className="mt-4 text-center space-y-1">
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
             Set New Password
           </h2>
-          <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+          <p className="text-xs sm:text-sm text-muted-foreground">
             Please enter your new password below.
           </p>
-          <div className="absolute top-4 right-4">
-            <ThemeToggle />
-          </div>
         </div>
       </div>
 
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <Card className="shadow-xl bg-white dark:bg-gray-800">
-          <CardContent className="py-8 px-4 sm:px-10">
+      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md px-4 sm:px-0">
+        <Card className="shadow-sm border border-border bg-card">
+          <CardContent className="py-8 px-4 sm:px-8 space-y-6">
             {success ? (
-              <div className="text-center">
-                <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-green-100 dark:bg-green-900/30">
-                  <svg className="h-6 w-6 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
+              <div className="text-center space-y-3 py-2">
+                <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+                  <CheckCircle2 className="h-6 w-6" />
                 </div>
-                <h3 className="mt-3 text-lg font-medium text-gray-900 dark:text-white">Password Updated</h3>
-                <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+                <h3 className="text-base font-bold text-foreground">Password Updated</h3>
+                <p className="text-xs text-muted-foreground">
                   Your password has been successfully reset. Redirecting you to login...
                 </p>
               </div>
             ) : (
-              <form className="space-y-6" onSubmit={handleSubmit}>
+              <form className="space-y-5" onSubmit={handleSubmit}>
                 {!sessionReady && !pageError && (
-                  <div className="rounded-md bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 p-4">
-                    <div className="flex">
-                      <div className="flex-shrink-0">
-                        <svg className="h-5 w-5 text-blue-400 animate-spin" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                        </svg>
-                      </div>
-                      <div className="ml-3">
-                        <p className="text-sm text-blue-700 dark:text-blue-300">Verifying recovery link...</p>
-                      </div>
-                    </div>
+                  <div className="rounded-lg bg-blue-500/10 border border-blue-500/20 p-3.5 flex items-center gap-3">
+                    <Loader2 className="h-5 w-5 text-blue-600 dark:text-blue-400 animate-spin shrink-0" />
+                    <p className="text-xs sm:text-sm font-medium text-blue-700 dark:text-blue-300">
+                      Verifying recovery link...
+                    </p>
                   </div>
                 )}
+
                 {pageError && (
-                  <div className="rounded-md bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 p-4">
-                    <div className="flex">
-                      <div className="flex-shrink-0">
-                        <svg className="h-5 w-5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                      </div>
-                      <div className="ml-3">
-                        <p className="text-sm text-red-700 dark:text-red-300">{pageError}</p>
-                      </div>
-                    </div>
+                  <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-3.5 flex items-start gap-3">
+                    <AlertTriangle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
+                    <p className="text-xs sm:text-sm text-destructive">{pageError}</p>
                   </div>
                 )}
+
                 {error && (
-                  <div className="rounded-md bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 p-4">
-                    <div className="flex">
-                      <div className="flex-shrink-0">
-                        <svg className="h-5 w-5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                      </div>
-                      <div className="ml-3">
-                        <h3 className="text-sm font-medium text-red-800 dark:text-red-200">
-                          Error
-                        </h3>
-                        <div className="mt-2 text-sm text-red-700 dark:text-red-300">
-                          <p>{error}</p>
-                        </div>
-                      </div>
+                  <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-3.5 flex items-start gap-3">
+                    <AlertTriangle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
+                    <div className="text-xs sm:text-sm">
+                      <p className="font-semibold text-destructive">Error</p>
+                      <p className="text-destructive/90 mt-0.5">{error}</p>
                     </div>
                   </div>
                 )}
                 
-                <div>
-                  <label htmlFor="password" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                <div className="space-y-1.5">
+                  <label htmlFor="password" className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     New Password
                   </label>
-                  <div className="mt-1">
-                    <input
-                      id="password"
-                      name="password"
-                      type="password"
-                      required
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      className="appearance-none block w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm placeholder-gray-400 dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 sm:text-sm transition duration-200"
-                      placeholder="••••••••"
-                    />
-                  </div>
+                  <input
+                    id="password"
+                    name="password"
+                    type="password"
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-background border border-input rounded-lg text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all"
+                    placeholder="••••••••"
+                  />
                 </div>
 
-                <div>
-                  <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                <div className="space-y-1.5">
+                  <label htmlFor="confirmPassword" className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     Confirm New Password
                   </label>
-                  <div className="mt-1">
-                    <input
-                      id="confirmPassword"
-                      name="confirmPassword"
-                      type="password"
-                      required
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      className="appearance-none block w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm placeholder-gray-400 dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 sm:text-sm transition duration-200"
-                      placeholder="••••••••"
-                    />
-                  </div>
+                  <input
+                    id="confirmPassword"
+                    name="confirmPassword"
+                    type="password"
+                    required
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-background border border-input rounded-lg text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all"
+                    placeholder="••••••••"
+                  />
                 </div>
 
-                <div>
+                <div className="pt-2">
                   <Button
                     type="submit"
                     disabled={loading || !sessionReady}
-                    className="w-full"
-                    size="lg"
+                    className="w-full font-semibold h-11 gap-2"
+                    variant="default"
                   >
-                    {loading ? 'Updating password...' : 'Update password'}
+                    {loading ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Updating password...
+                      </>
+                    ) : (
+                      'Update password'
+                    )}
                   </Button>
                 </div>
               </form>
             )}
           </CardContent>
         </Card>
+
+        <div className="mt-6 text-center">
+          <p className="text-xs text-muted-foreground">
+            &copy; {new Date().getFullYear()} AJ Softdrive Store. All rights reserved.
+          </p>
+        </div>
       </div>
     </div>
   );

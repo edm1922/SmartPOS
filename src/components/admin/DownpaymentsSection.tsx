@@ -10,20 +10,16 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Modal } from '@/components/ui/Modal';
 import {
-  HandCoins,
-  Wallet,
-  CalendarDays,
-  Search,
-  RotateCcw,
   AlertTriangle,
   Banknote,
+  CalendarDays,
   CreditCard,
-  Smartphone,
+  HandCoins,
+  RotateCcw,
   ScrollText,
-  FileText,
-  Calendar,
-  UserRound,
-  ReceiptText,
+  Search,
+  Smartphone,
+  Wallet,
 } from 'lucide-react';
 
 interface ReportPeriod {
@@ -74,9 +70,11 @@ const METHODS_REQUIRING_REFERENCE = ['card', 'mobile', 'cheque'];
 export default function DownpaymentsSection({
   period,
   onRecorded,
+  searchTerm = '',
 }: {
   period: ReportPeriod;
   onRecorded?: () => void;
+  searchTerm?: string;
 }) {
   const { formatPrice } = useCurrency();
 
@@ -222,17 +220,19 @@ export default function DownpaymentsSection({
   );
 
   const filteredAccounts = useMemo(() => {
+    const q = searchTerm.trim().toLowerCase();
+    const byName = (a: AccountRow) => !q || a.customer_name.toLowerCase().includes(q);
     switch (filter) {
       case 'open':
-        return openAccounts;
+        return openAccounts.filter(byName);
       case 'overdue':
-        return openAccounts.filter((a) => isOverdueRow(a));
+        return openAccounts.filter((a) => isOverdueRow(a) && byName(a));
       case 'paid':
-        return accounts.filter((a) => a.outstanding <= 0);
+        return accounts.filter((a) => a.outstanding <= 0 && byName(a));
       default:
-        return accounts;
+        return accounts.filter(byName);
     }
-  }, [accounts, openAccounts, filter]);
+  }, [accounts, openAccounts, filter, searchTerm]);
 
   useEffect(() => {
     if (!isRecordOpen || !custQuery.trim()) {
@@ -368,48 +368,34 @@ export default function DownpaymentsSection({
       }
 
       setIsSaving(true);
-      const { data: paymentData, error: paymentError } = await supabase
-        .from('term_payments')
-        .insert({
-          customer_id: recCustomer.id,
-          cashier_id: null,
-          amount,
-          payment_method: recMethod,
-          reference_number: METHODS_REQUIRING_REFERENCE.includes(recMethod) ? recReference.trim() : null,
-          notes: recNotes.trim() || null,
-        })
-        .select()
-        .single();
-      if (paymentError) throw paymentError;
 
       let remaining = amount;
+      let overrideAlloc = 0;
+      const allocPayload: { transaction_id: string; amount: number }[] = [];
       for (const bucket of outstanding) {
         if (remaining <= 0) break;
         const owed = Math.max(0, bucket.owed);
         const alloc = Math.min(remaining, owed);
         if (alloc <= 0) continue;
-
         if (bucket.id === 'balance_override') {
-          const { error: overrideError } = await supabase
-            .from('customers')
-            .update({ balance_override: owed - alloc })
-            .eq('id', recCustomer.id);
-          if (overrideError) throw overrideError;
+          overrideAlloc += alloc;
         } else {
-          const { error: allocError } = await supabase
-            .from('term_payment_allocations')
-            .insert({ term_payment_id: paymentData.id, transaction_id: bucket.id, amount: alloc });
-          if (allocError) throw allocError;
-
-          const newPaid = bucket.term_paid_amount + alloc;
-          const { error: updateError } = await supabase.rpc('update_transaction_term_paid_amount', {
-            p_transaction_id: bucket.id,
-            p_term_paid_amount: newPaid,
-          });
-          if (updateError) throw updateError;
+          allocPayload.push({ transaction_id: bucket.id, amount: alloc });
         }
         remaining -= alloc;
       }
+
+      const { error: paymentError } = await supabase.rpc('record_term_payment', {
+        p_customer_id: recCustomer.id,
+        p_cashier_id: null,
+        p_amount: amount,
+        p_override_alloc: overrideAlloc,
+        p_payment_method: recMethod,
+        p_reference_number: METHODS_REQUIRING_REFERENCE.includes(recMethod) ? recReference.trim() : null,
+        p_notes: recNotes.trim() || null,
+        p_allocations: allocPayload,
+      });
+      if (paymentError) throw paymentError;
 
       closeAfterSave();
       await load();
@@ -445,12 +431,9 @@ export default function DownpaymentsSection({
   return (
     <section className="space-y-6">
       {/* Section header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 bg-white dark:bg-gray-900 px-6 py-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800">
+      <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
         <div>
-          <h2 className="text-xl font-extrabold tracking-tight flex items-center gap-2">
-            <HandCoins className="h-6 w-6 text-primary" />
-            Down Payments
-          </h2>
+          <h2 className="text-xl font-bold tracking-tight">Down Payments</h2>
           <p className="text-sm text-muted-foreground mt-0.5">
             Monitor term accounts, record collections, and undo mistakes. Outstanding balances are all-time;
             collections follow the report period above.
@@ -469,46 +452,89 @@ export default function DownpaymentsSection({
         </div>
       )}
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        <MiniStat
-          title="Total Outstanding"
-          value={formatPrice(totalOutstanding)}
-          sub={`${openAccounts.length} open account${openAccounts.length === 1 ? '' : 's'}`}
-          icon={<Wallet className="h-5 w-5 text-green-500" />}
-          loading={isLoading}
-        />
-        <MiniStat
-          title="Collected (period)"
-          value={formatPrice(collectedTotal)}
-          sub={`${collections.length} payment${collections.length === 1 ? '' : 's'}`}
-          icon={<HandCoins className="h-5 w-5 text-blue-500" />}
-          loading={isLoading}
-        />
-        <MiniStat
-          title="Overdue"
-          value={overdueCount.toString()}
-          sub={overdueCount > 0 ? `${formatPrice(openAccounts.filter((a) => isOverdueRow(a)).reduce((s, a) => s + a.outstanding, 0))} past due` : 'All within due date'}
-          icon={<Calendar className="h-5 w-5 text-orange-500" />}
-          loading={isLoading}
-        />
-        <MiniStat
-          title="Down Payments Taken"
-          value={formatPrice(accounts.reduce((s, a) => s + a.down_payment, 0))}
-          sub="Initial down payments on term sales"
-          icon={<ReceiptText className="h-5 w-5 text-purple-500" />}
-          loading={isLoading}
-        />
-      </div>
+      {/* Summary */}
+      <section
+        aria-label="Down payments summary"
+        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x rounded-lg border bg-card"
+      >
+        <div className="px-6 py-5">
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+            Total Outstanding
+          </p>
+          {isLoading ? (
+            <Skeleton className="mt-2 h-8 w-24" />
+          ) : (
+            <p className="mt-1 text-2xl font-bold tracking-tight tabular-nums">{formatPrice(totalOutstanding)}</p>
+          )}
+          {!isLoading && (
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              {openAccounts.length} open account{openAccounts.length === 1 ? '' : 's'}
+            </p>
+          )}
+        </div>
+        <div className="px-6 py-5">
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+            Collected (period)
+          </p>
+          {isLoading ? (
+            <Skeleton className="mt-2 h-8 w-24" />
+          ) : (
+            <p className="mt-1 text-2xl font-bold tracking-tight tabular-nums">{formatPrice(collectedTotal)}</p>
+          )}
+          {!isLoading && (
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              {collections.length} payment{collections.length === 1 ? '' : 's'}
+            </p>
+          )}
+        </div>
+        <div className="px-6 py-5">
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+            Overdue
+          </p>
+          {isLoading ? (
+            <Skeleton className="mt-2 h-8 w-16" />
+          ) : (
+            <p className={`mt-1 text-2xl font-bold tracking-tight tabular-nums ${overdueCount > 0 ? 'text-amber-600 dark:text-amber-400' : ''}`}>
+              {overdueCount.toString()}
+            </p>
+          )}
+          {!isLoading && (
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              {overdueCount > 0
+                ? `${formatPrice(openAccounts.filter((a) => isOverdueRow(a)).reduce((s, a) => s + a.outstanding, 0))} past due`
+                : 'All within due date'}
+            </p>
+          )}
+        </div>
+        <div className="px-6 py-5">
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+            Down Payments Taken
+          </p>
+          {isLoading ? (
+            <Skeleton className="mt-2 h-8 w-24" />
+          ) : (
+            <p className="mt-1 text-2xl font-bold tracking-tight tabular-nums">
+              {formatPrice(accounts.reduce((s, a) => s + a.down_payment, 0))}
+            </p>
+          )}
+          {!isLoading && (
+            <p className="mt-1.5 text-xs text-muted-foreground">Initial down payments on term sales</p>
+          )}
+        </div>
+      </section>
 
       {/* Open accounts */}
       <Card className="shadow-sm border-gray-100 dark:border-gray-800 overflow-hidden">
-        <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-2 bg-gray-50/50 dark:bg-gray-800/50 border-b">
-          <div className="flex items-center gap-2">
-            <FileText className="h-5 w-5 text-gray-500" />
-            <h3 className="text-lg font-semibold">Term Accounts</h3>
+        <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-2 px-6 py-4 border-b">
+          <div>
+            <h3 className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+              Down Payments & Collections
+            </h3>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Per-transaction detail: record payments, allocate to receivables, undo mistakes.
+            </p>
           </div>
-          <div className="flex bg-gray-100 dark:bg-gray-800 p-1 rounded-xl">
+          <div className="flex bg-muted p-1 rounded-lg">
             {(
               [
                 { key: 'open', label: `Open (${openAccounts.length})` },
@@ -522,7 +548,7 @@ export default function DownpaymentsSection({
                 variant={filter === t.key ? 'default' : 'ghost'}
                 size="sm"
                 onClick={() => setFilter(t.key)}
-                className={`rounded-lg ${filter === t.key ? 'shadow-sm' : ''}`}
+                className={`rounded-md ${filter === t.key ? 'shadow-sm' : ''}`}
               >
                 {t.label}
               </Button>
@@ -537,14 +563,18 @@ export default function DownpaymentsSection({
               ))}
             </div>
           ) : filteredAccounts.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-              <CalendarDays className="h-12 w-12 mb-4 opacity-20" />
-              <p>No term accounts in this view</p>
+            <div className="py-20 text-center">
+              <p className="text-sm font-medium text-muted-foreground">
+                {searchTerm.trim() ? 'No matching customers' : 'No term accounts in this view'}
+              </p>
+              {searchTerm.trim() && (
+                <p className="text-xs text-muted-foreground mt-1">Try a different name or clear the search.</p>
+              )}
             </div>
           ) : (
             <div className="overflow-x-auto">
               <Table>
-                <TableHeader className="bg-gray-50 dark:bg-gray-900/50">
+                <TableHeader className="bg-muted">
                   <TableRow>
                     <TableHead>Customer</TableHead>
                     <TableHead className="w-[120px]">Due Date</TableHead>
@@ -558,16 +588,11 @@ export default function DownpaymentsSection({
                 </TableHeader>
                 <TableBody>
                   {filteredAccounts.map((a) => (
-                    <TableRow key={a.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/50 transition-colors">
+                    <TableRow key={a.id} className="hover:bg-muted transition-colors">
                       <TableCell>
-                        <div className="flex items-center gap-2">
-                          <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-bold text-primary">
-                            {a.customer_name.substring(0, 2).toUpperCase() || '??'}
-                          </div>
-                          <span className="truncate max-w-[160px]">{a.customer_name}</span>
-                        </div>
+                        <span className="block truncate max-w-[160px] text-sm">{a.customer_name}</span>
                       </TableCell>
-                      <TableCell className="text-sm text-gray-600 dark:text-gray-400">
+                      <TableCell className="text-sm text-muted-foreground">
                         {a.term_due_date ? formatDate(a.term_due_date) : '-'}
                       </TableCell>
                       <TableCell>
@@ -580,18 +605,15 @@ export default function DownpaymentsSection({
                             Manual
                           </Badge>
                         ) : (
-                          <Badge
-                            variant="outline"
-                            className="text-blue-700 border-blue-300 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-300 dark:border-blue-800 text-[10px] font-black uppercase"
-                          >
+                          <Badge variant="outline" className="text-[10px] font-black uppercase">
                             Register
                           </Badge>
                         )}
                       </TableCell>
-                      <TableCell className="text-right">{formatPrice(a.total_amount)}</TableCell>
-                      <TableCell className="text-right">{formatPrice(a.down_payment)}</TableCell>
-                      <TableCell className="text-right">{formatPrice(a.term_paid_amount)}</TableCell>
-                      <TableCell className="text-right font-bold text-gray-900 dark:text-white">
+                      <TableCell className="text-right tabular-nums">{formatPrice(a.total_amount)}</TableCell>
+                      <TableCell className="text-right tabular-nums">{formatPrice(a.down_payment)}</TableCell>
+                      <TableCell className="text-right tabular-nums">{formatPrice(a.term_paid_amount)}</TableCell>
+                      <TableCell className="text-right font-semibold tabular-nums">
                         {formatPrice(a.outstanding)}
                       </TableCell>
                       <TableCell>
@@ -600,7 +622,7 @@ export default function DownpaymentsSection({
                             Paid
                           </Badge>
                         ) : isOverdueRow(a) ? (
-                          <Badge className="text-red-700 border-red-200 bg-red-50 dark:bg-red-900/20 dark:text-red-300 dark:border-red-800">
+                          <Badge className="text-amber-700 border-amber-200 bg-amber-50 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-800">
                             Overdue
                           </Badge>
                         ) : (
@@ -618,12 +640,11 @@ export default function DownpaymentsSection({
 
       {/* Collections */}
       <Card className="shadow-sm border-gray-100 dark:border-gray-800 overflow-hidden">
-        <CardHeader className="flex flex-row items-center justify-between bg-gray-50/50 dark:bg-gray-800/50 border-b">
-          <div className="flex items-center gap-2">
-            <HandCoins className="h-5 w-5 text-gray-500" />
-            <h3 className="text-lg font-semibold">Collections</h3>
-          </div>
-          <span className="text-sm text-muted-foreground">
+        <CardHeader className="flex flex-row items-center justify-between px-6 py-4 border-b">
+          <h3 className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+            Collections
+          </h3>
+          <span className="text-sm text-muted-foreground tabular-nums">
             {formatPrice(collectedTotal)} within period
           </span>
         </CardHeader>
@@ -635,14 +656,13 @@ export default function DownpaymentsSection({
               ))}
             </div>
           ) : collections.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-              <Calendar className="h-12 w-12 mb-4 opacity-20" />
-              <p>No collections recorded in this period</p>
+            <div className="py-20 text-center">
+              <p className="text-sm font-medium text-muted-foreground">No collections recorded in this period</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <Table>
-                <TableHeader className="bg-gray-50 dark:bg-gray-900/50">
+                <TableHeader className="bg-muted">
                   <TableRow>
                     <TableHead className="w-[130px]">Date</TableHead>
                     <TableHead>Customer</TableHead>
@@ -655,29 +675,26 @@ export default function DownpaymentsSection({
                 </TableHeader>
                 <TableBody>
                   {collections.map((c) => (
-                    <TableRow key={c.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/50 transition-colors">
-                      <TableCell className="text-sm text-gray-600 dark:text-gray-400">
+                    <TableRow key={c.id} className="hover:bg-muted transition-colors">
+                      <TableCell className="text-sm text-muted-foreground">
                         {formatDateTime(c.created_at)}
                       </TableCell>
-                      <TableCell className="font-medium">{c.customer_name}</TableCell>
+                      <TableCell className="font-medium text-sm">{c.customer_name}</TableCell>
                       <TableCell>
-                        <span className="inline-flex items-center gap-1 text-sm">
-                          <UserRound className="h-3.5 w-3.5 text-muted-foreground" />
-                          {c.collector}
-                        </span>
+                        <span className="text-sm">{c.collector}</span>
                       </TableCell>
                       <TableCell>
-                        <Badge variant="outline" className="capitalize flex w-fit items-center px-2 py-0.5">
+                        <div className="flex items-center capitalize whitespace-nowrap text-sm gap-1.5">
                           {getMethodIcon(c.payment_method)}
                           {c.payment_method}
-                        </Badge>
+                        </div>
                       </TableCell>
                       <TableCell>
-                        <div className="text-xs text-gray-500 max-w-[220px]">
+                        <div className="text-xs text-muted-foreground max-w-[220px]">
                           {c.target_labels.length > 0 ? c.target_labels.join(', ') : '-'}
                         </div>
                       </TableCell>
-                      <TableCell className="text-right font-bold text-gray-900 dark:text-white">
+                      <TableCell className="text-right font-semibold tabular-nums">
                         {formatPrice(c.amount)}
                       </TableCell>
                       <TableCell className="text-right">
@@ -890,39 +907,6 @@ export default function DownpaymentsSection({
   );
 }
 
-function MiniStat({
-  title,
-  value,
-  sub,
-  icon,
-  loading,
-}: {
-  title: string;
-  value: string;
-  sub?: string;
-  icon: React.ReactNode;
-  loading: boolean;
-}) {
-  return (
-    <Card className="shadow-sm border-gray-100 dark:border-gray-800">
-      <CardContent className="pt-6">
-        <div className="flex items-start justify-between">
-          <div className="space-y-2">
-            <p className="text-sm font-medium text-gray-500 flex items-center gap-1.5">{title}</p>
-            {loading ? (
-              <Skeleton className="h-8 w-24" />
-            ) : (
-              <h3 className="text-2xl font-bold tracking-tight">{value}</h3>
-            )}
-            {sub && !loading && <p className="text-[11px] text-muted-foreground">{sub}</p>}
-          </div>
-          <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-2xl">{icon}</div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
 function isOverdueRow(a: AccountRow) {
   if (a.outstanding <= 0 || !a.term_due_date) return false;
   const due = a.term_due_date.includes('T') ? a.term_due_date.slice(0, 10) : a.term_due_date;
@@ -945,20 +929,20 @@ function formatDateTime(iso: string) {
 function getMethodIcon(method: string) {
   switch ((method || '').toLowerCase()) {
     case 'cash':
-      return <Banknote className="h-4 w-4 mr-1" />;
+      return <Banknote className="h-4 w-4" />;
     case 'gcash':
     case 'mobile':
-      return <Smartphone className="h-4 w-4 mr-1" />;
+      return <Smartphone className="h-4 w-4" />;
     case 'card':
-      return <CreditCard className="h-4 w-4 mr-1" />;
+      return <CreditCard className="h-4 w-4" />;
     case 'cheque':
-      return <ScrollText className="h-4 w-4 mr-1" />;
+      return <ScrollText className="h-4 w-4" />;
     case 'term':
-      return <CalendarDays className="h-4 w-4 mr-1" />;
+      return <CalendarDays className="h-4 w-4" />;
     case 'downpayment':
     case 'term_payment':
-      return <HandCoins className="h-4 w-4 mr-1" />;
+      return <HandCoins className="h-4 w-4" />;
     default:
-      return <Wallet className="h-4 w-4 mr-1" />;
+      return <Wallet className="h-4 w-4" />;
   }
 }

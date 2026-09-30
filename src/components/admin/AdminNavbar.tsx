@@ -2,34 +2,61 @@
 
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { usePathname } from 'next/navigation';
+import Link from 'next/link';
 import { supabase } from '@/lib/supabaseClient';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/input';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
-import { Search, UserCircle } from 'lucide-react';
+import { Search, Settings, UserCircle, ChevronDown } from 'lucide-react';
 import { CustomerDetailModal } from '@/components/admin/CustomerDetailModal';
 
-const navItems = [
+type NavItem = {
+    name: string;
+    href?: string;
+    children?: { name: string; href: string }[];
+};
+
+const navItems: NavItem[] = [
     { name: 'Dashboard', href: '/admin/dashboard' },
     { name: 'Products', href: '/admin/products' },
     { name: 'Cashiers', href: '/admin/cashiers' },
-    { name: 'Reports', href: '/admin/reports' },
-    { name: 'Settings', href: '/admin/settings' },
+    {
+        name: 'Sales',
+        children: [
+            { name: 'Reports', href: '/admin/reports' },
+            { name: 'Term Accounts', href: '/admin/term-accounts' },
+        ],
+    },
     { name: 'Approvals', href: '/admin/approvals' },
+];
+
+// Settings moved to a dedicated gear icon on the top-right; the mobile menu (no
+// top-right icon row) keeps a plain entry so the page stays reachable on phones.
+const mobileNavItems: NavItem[] = [
+    ...navItems,
+    { name: 'Settings', href: '/admin/settings' },
 ];
 
 export function AdminNavbar() {
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+    const [mobileSalesOpen, setMobileSalesOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [customers, setCustomers] = useState<any[]>([]);
     const [customersLoading, setCustomersLoading] = useState(true);
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+    const [isSalesMenuOpen, setIsSalesMenuOpen] = useState(false);
     const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
     const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
     const searchRef = useRef<HTMLDivElement>(null);
+    const salesRef = useRef<HTMLDivElement>(null);
     const pathname = usePathname();
     const [pendingApprovals, setPendingApprovals] = useState(0);
+
+    const isItemActive = (item: NavItem) =>
+        item.children
+            ? item.children.some((child) => pathname === child.href)
+            : pathname === item.href;
 
     useEffect(() => {
         fetchCustomers();
@@ -64,6 +91,9 @@ export function AdminNavbar() {
         const handleClickOutside = (e: MouseEvent) => {
             if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
                 setIsDropdownOpen(false);
+            }
+            if (salesRef.current && !salesRef.current.contains(e.target as Node)) {
+                setIsSalesMenuOpen(false);
             }
         };
         document.addEventListener('mousedown', handleClickOutside);
@@ -129,23 +159,59 @@ export function AdminNavbar() {
                             </div>
                             {/* Desktop navigation */}
                             <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
-                                {navItems.map((item) => (
-                                    <a
-                                        key={item.name}
-                                        href={item.href}
-                                        className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${pathname === item.href
-                                            ? 'border-primary-500 text-gray-900 dark:text-white'
-                                            : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-300 dark:hover:text-gray-200'
-                                            }`}
-                                    >
-                                        {item.name}
-                                        {item.name === 'Approvals' && pendingApprovals > 0 && (
-                                            <span className="ml-1.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-amber-500 text-white text-[10px] font-black">
-                                                {pendingApprovals}
+                                {navItems.map((item) =>
+                                    item.children ? (
+                                        <div
+                                            key={item.name}
+                                            ref={salesRef}
+                                            className="relative grid"
+                                            onMouseEnter={() => setIsSalesMenuOpen(true)}
+                                            onMouseLeave={() => setIsSalesMenuOpen(false)}
+                                        >
+                                            <span
+                                                className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${isItemActive(item)
+                                                    ? 'border-primary-500 text-gray-900 dark:text-white'
+                                                    : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-300 dark:hover:text-gray-200'
+                                                    }`}
+                                            >
+                                                {item.name}
                                             </span>
-                                        )}
-                                    </a>
-                                ))}
+                                            {isSalesMenuOpen && (
+                                                <div className="absolute left-0 top-full w-44 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700 overflow-hidden z-50">
+                                                    {item.children.map((child) => (
+                                                        <a
+                                                            key={child.href}
+                                                            href={child.href}
+                                                            onClick={() => setIsSalesMenuOpen(false)}
+                                                            className={`block px-4 py-2.5 text-sm font-medium ${pathname === child.href
+                                                                ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300'
+                                                                : 'text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                                                                }`}
+                                                        >
+                                                            {child.name}
+                                                        </a>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <a
+                                            key={item.name}
+                                            href={item.href}
+                                            className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${pathname === item.href
+                                                ? 'border-primary-500 text-gray-900 dark:text-white'
+                                                : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-300 dark:hover:text-gray-200'
+                                                }`}
+                                        >
+                                            {item.name}
+                                            {item.name === 'Approvals' && pendingApprovals > 0 && (
+                                                <span className="ml-1.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-amber-500 text-white text-[10px] font-black">
+                                                    {pendingApprovals}
+                                                </span>
+                                            )}
+                                        </a>
+                                    )
+                                )}
                             </div>
                         </div>
                         <div className="hidden sm:ml-6 sm:flex sm:items-center space-x-2">
@@ -208,6 +274,18 @@ export function AdminNavbar() {
                             </div>
                             <ThemeToggle />
                             <Button
+                                asChild
+                                variant="outline"
+                                size="icon"
+                                aria-label="Settings"
+                                title="Settings"
+                                className={pathname === '/admin/settings' ? 'text-primary border-primary' : ''}
+                            >
+                                <Link href="/admin/settings">
+                                    <Settings className="h-5 w-5" />
+                                </Link>
+                            </Button>
+                            <Button
                                 onClick={handleSignOut}
                                 variant="outline"
                                 size="sm"
@@ -235,31 +313,67 @@ export function AdminNavbar() {
             {/* Mobile menu modal */}
             <Modal
                 isOpen={isMobileMenuOpen}
-                onClose={() => setIsMobileMenuOpen(false)}
+                onClose={() => {
+                    setIsMobileMenuOpen(false);
+                    setMobileSalesOpen(false);
+                }}
                 title="Navigation"
                 size="fullscreen"
             >
-                <div className="flex flex-col space-y-4">
-                    {navItems.map((item) => (
-                        <a
-                            key={item.name}
-                            href={item.href}
-                            className={`block px-4 py-3 text-lg font-medium rounded-lg transition-colors duration-200 ${pathname === item.href
-                                ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300'
-                                : 'text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'
-                                }`}
-                            onClick={() => setIsMobileMenuOpen(false)}
-                        >
-                            <span className="flex items-center justify-between">
-                                {item.name}
-                                {item.name === 'Approvals' && pendingApprovals > 0 && (
-                                    <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-amber-500 text-white text-[10px] font-black">
-                                        {pendingApprovals}
-                                    </span>
+                <div className="flex flex-col space-y-2">
+                    {mobileNavItems.map((item) =>
+                        item.children ? (
+                            <div key={item.name}>
+                                <button
+                                    type="button"
+                                    onClick={() => setMobileSalesOpen((open) => !open)}
+                                    className={`w-full flex items-center justify-between px-4 py-3 text-lg font-medium rounded-lg transition-colors duration-200 ${isItemActive(item)
+                                        ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300'
+                                        : 'text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'
+                                        }`}
+                                >
+                                    {item.name}
+                                    <ChevronDown className={`h-5 w-5 transition-transform ${mobileSalesOpen ? 'rotate-180' : ''}`} />
+                                </button>
+                                {mobileSalesOpen && (
+                                    <div className="ml-4 pl-4 border-l border-gray-200 dark:border-gray-700 mt-1 space-y-1">
+                                        {item.children.map((child) => (
+                                            <a
+                                                key={child.href}
+                                                href={child.href}
+                                                onClick={() => setIsMobileMenuOpen(false)}
+                                                className={`block px-4 py-2.5 text-base font-medium rounded-lg ${pathname === child.href
+                                                    ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300'
+                                                    : 'text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'
+                                                    }`}
+                                            >
+                                                {child.name}
+                                            </a>
+                                        ))}
+                                    </div>
                                 )}
-                            </span>
-                        </a>
-                    ))}
+                            </div>
+                        ) : (
+                            <a
+                                key={item.name}
+                                href={item.href}
+                                className={`block px-4 py-3 text-lg font-medium rounded-lg transition-colors duration-200 ${pathname === item.href
+                                    ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300'
+                                    : 'text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'
+                                    }`}
+                                onClick={() => setIsMobileMenuOpen(false)}
+                            >
+                                <span className="flex items-center justify-between">
+                                    {item.name}
+                                    {item.name === 'Approvals' && pendingApprovals > 0 && (
+                                        <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-amber-500 text-white text-[10px] font-black">
+                                            {pendingApprovals}
+                                        </span>
+                                    )}
+                                </span>
+                            </a>
+                        )
+                    )}
                     <div className="pt-4 mt-4 border-t border-gray-200 dark:border-gray-700">
                         <Button
                             onClick={handleSignOut}

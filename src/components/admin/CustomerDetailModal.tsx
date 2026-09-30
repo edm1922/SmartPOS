@@ -31,10 +31,14 @@ interface CustomerTransaction {
   payment_method: string;
   status: string;
   created_at: string;
+  transaction_date: string;
   term_remaining_balance?: number;
   term_paid_amount?: number;
   term_due_date?: string;
   term_status?: string;
+  /** 'manual' marks a BIR sales-book entry; anything else is a register sale. */
+  source?: string;
+  manual_ref?: string | null;
 }
 
 interface TermPaymentRecord {
@@ -55,6 +59,11 @@ export function CustomerDetailModal({ customer, isOpen, onClose }: CustomerDetai
   const { formatPrice } = useCurrency();
   const [transactions, setTransactions] = useState<CustomerTransaction[]>([]);
   const [termPayments, setTermPayments] = useState<TermPaymentRecord[]>([]);
+  const [customerRecord, setCustomerRecord] = useState<{
+    balance_override?: number;
+    updated_at?: string;
+    balance_override_updated_at?: string;
+  } | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -67,9 +76,19 @@ export function CustomerDetailModal({ customer, isOpen, onClose }: CustomerDetai
     if (!customer) return;
     setLoading(true);
     try {
+      // select('*') keeps this working even before the balance_override_updated_at
+      // migration lands on the live database.
+      const { data: record, error: recordError } = await supabase
+        .from('customers')
+        .select('*')
+        .eq('id', customer.id)
+        .single();
+      if (recordError) throw recordError;
+      setCustomerRecord(record);
+
       const { data, error } = await supabase
         .from('transactions')
-        .select('id, total_amount, payment_method, status, created_at, transaction_date, source, manual_ref')
+        .select('id, total_amount, payment_method, status, created_at, transaction_date, source, manual_ref, term_remaining_balance, term_paid_amount, term_due_date, term_status')
         .eq('customer_id', customer.id)
         .is('voided_at', null)
         .order('transaction_date', { ascending: true });
@@ -93,8 +112,6 @@ export function CustomerDetailModal({ customer, isOpen, onClose }: CustomerDetai
 
   const totalSpent = transactions.reduce((sum, t) => sum + Number(t.total_amount || 0), 0);
   const visitCount = transactions.length;
-  const firstTransaction = transactions.length > 0 ? transactions[0] : null;
-  const latestTransaction = transactions.length > 0 ? transactions[transactions.length - 1] : null;
 
   const outstandingTerm = transactions
     .filter(t => t.payment_method === 'term')
@@ -102,6 +119,23 @@ export function CustomerDetailModal({ customer, isOpen, onClose }: CustomerDetai
       const owed = (t.term_remaining_balance || t.total_amount) - (t.term_paid_amount || 0);
       return sum + Math.max(0, owed);
     }, 0);
+
+  // The term-account roster folds the unlinked manual balance into the customer's
+  // outstanding figure; the detail view mirrors that so both agree.
+  const manualBalance = Math.max(0, Number(customerRecord?.balance_override || 0));
+  const outstandingTotal = outstandingTerm + manualBalance;
+  const overrideSetAt = customerRecord?.balance_override_updated_at || customerRecord?.updated_at || '';
+
+  // A manual balance is an account event too: a balance-only customer (no sales,
+  // no payments) should still show when they were set up, not an empty N/A.
+  const activityDates = [
+    ...transactions.map(t => t.created_at),
+    ...termPayments.map(p => p.created_at),
+    ...(manualBalance > 0 && overrideSetAt ? [overrideSetAt] : []),
+  ].sort();
+  const firstActivityAt = activityDates.length > 0 ? activityDates[0] : '';
+  const lastActivityAt = activityDates.length > 0 ? activityDates[activityDates.length - 1] : '';
+  const onlyManualBalance = transactions.length === 0 && termPayments.length === 0 && manualBalance > 0;
 
   const paymentIcon = (method: string) => {
     switch (method) {
@@ -200,21 +234,32 @@ export function CustomerDetailModal({ customer, isOpen, onClose }: CustomerDetai
               <p className="text-xl font-black text-gray-900 dark:text-white mt-1">{visitCount}</p>
             </div>
             <div className="p-4 rounded-xl bg-purple-50 dark:bg-purple-900/10 border border-purple-100 dark:border-purple-900/30">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400">First Transaction</p>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400">First Activity</p>
               <p className="text-sm font-bold text-gray-900 dark:text-white mt-1">
-                {firstTransaction ? new Date(firstTransaction.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : 'N/A'}
+                {firstActivityAt ? new Date(firstActivityAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : 'N/A'}
               </p>
             </div>
             <div className="p-4 rounded-xl bg-orange-50 dark:bg-orange-900/10 border border-orange-100 dark:border-orange-900/30">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-orange-600 dark:text-orange-400">Latest Transaction</p>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-orange-600 dark:text-orange-400">Last Activity</p>
               <p className="text-sm font-bold text-gray-900 dark:text-white mt-1">
-                {latestTransaction ? new Date(latestTransaction.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : 'N/A'}
+                {lastActivityAt ? new Date(lastActivityAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : 'N/A'}
               </p>
+              {onlyManualBalance && lastActivityAt && (
+                <p className="text-[9px] font-medium text-muted-foreground mt-0.5">(manual balance)</p>
+              )}
             </div>
-            {outstandingTerm > 0 && (
+            {outstandingTotal > 0 && (
               <div className="p-4 rounded-xl bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/30">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-red-600 dark:text-red-400">Outstanding Term</p>
-                <p className="text-xl font-black text-red-600 dark:text-red-400 mt-1">{formatPrice(outstandingTerm)}</p>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-red-600 dark:text-red-400">Outstanding</p>
+                <p className="text-xl font-black text-red-600 dark:text-red-400 mt-1">{formatPrice(outstandingTotal)}</p>
+                {manualBalance > 0 && (
+                  <p className="text-[10px] font-bold text-blue-600 mt-0.5">
+                    incl. {formatPrice(manualBalance)} manual balance
+                    {overrideSetAt
+                      ? ` · ${new Date(overrideSetAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}`
+                      : ''}
+                  </p>
+                )}
               </div>
             )}
           </div>
@@ -251,6 +296,8 @@ export function CustomerDetailModal({ customer, isOpen, onClose }: CustomerDetai
                     <th className="text-left px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Date</th>
                     <th className="text-left px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Amount</th>
                     <th className="text-left px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Payment</th>
+                    <th className="text-left px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Source</th>
+                    <th className="text-left px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Term</th>
                     <th className="text-left px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Status</th>
                   </tr>
                 </thead>
@@ -268,6 +315,43 @@ export function CustomerDetailModal({ customer, isOpen, onClose }: CustomerDetai
                           {paymentIcon(t.payment_method)}
                           {t.payment_method}
                         </span>
+                      </td>
+                      {/* Manual (BIR book) sales are indistinguishable from
+                          register sales without this, so the source and its
+                          serial are shown on the row. */}
+                      <td className="px-4 py-3">
+                        {t.source === 'manual' ? (
+                          <span className="inline-flex flex-col gap-0.5">
+                            <span className="inline-flex items-center px-2 py-0.5 w-fit rounded-full text-[10px] font-bold uppercase tracking-wider bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">
+                              Manual
+                            </span>
+                            {t.manual_ref && (
+                              <span className="text-[10px] font-mono text-muted-foreground">
+                                {t.manual_ref}
+                              </span>
+                            )}
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                            Register
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        {t.payment_method === 'term' ? (
+                          <span className="inline-flex flex-col gap-0.5 text-[10px] font-medium">
+                            <span className="text-muted-foreground">
+                              {t.term_due_date
+                                ? `Due ${new Date(t.term_due_date).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}`
+                                : 'Due —'}
+                            </span>
+                            <span className="text-red-600 font-bold">
+                              Remaining {formatPrice(Math.max(0, (t.term_remaining_balance || t.total_amount) - (t.term_paid_amount || 0)))}
+                            </span>
+                          </span>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${

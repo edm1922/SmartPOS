@@ -110,6 +110,7 @@ export interface Customer {
   address?: string | null;
   tin_number?: string | null;
   balance_override?: number;
+  balance_override_updated_at?: string;
   created_at: string;
   updated_at: string;
 }

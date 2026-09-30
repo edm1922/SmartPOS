@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff, Store, AlertTriangle, ArrowLeft, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent } from '@/components/ui/Card';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
@@ -12,6 +12,11 @@ interface LoginFormProps {
   loading: boolean;
   error: string | null;
   showBackButton?: boolean;
+  identifierLabel?: string;
+  identifierPlaceholder?: string;
+  identifierType?: string;
+  showForgotPasswordLink?: boolean;
+  icon?: React.ReactNode;
 }
 
 export const LoginForm: React.FC<LoginFormProps> = ({
@@ -20,7 +25,12 @@ export const LoginForm: React.FC<LoginFormProps> = ({
   onSubmit,
   loading,
   error,
-  showBackButton = false
+  showBackButton = true,
+  identifierLabel = 'Username',
+  identifierPlaceholder = 'Enter your username',
+  identifierType = 'text',
+  showForgotPasswordLink = false,
+  icon,
 }) => {
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
@@ -29,23 +39,14 @@ export const LoginForm: React.FC<LoginFormProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    
-    console.log('Form submission started');
-    console.log('Form event:', e);
-    console.log('Identifier:', identifier);
-    console.log('Password: [HIDDEN]');
-    
-    // Check if onSubmit is a function
+
     if (typeof onSubmit !== 'function') {
       console.error('onSubmit is not a function:', onSubmit);
       return;
     }
-    
+
     try {
-      console.log('Calling onSubmit function');
       await onSubmit(identifier, password);
-      console.log('onSubmit completed successfully');
-      // Reset form fields after successful submission
       setIdentifier('');
       setPassword('');
     } catch (err) {
@@ -54,85 +55,74 @@ export const LoginForm: React.FC<LoginFormProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-background text-foreground flex flex-col justify-center py-12 sm:px-6 lg:px-8 relative selection:bg-primary selection:text-primary-foreground">
+      {/* Top Bar Theme Toggle */}
+      <div className="absolute top-4 right-4 z-10">
+        <ThemeToggle />
+      </div>
+
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <div className="flex justify-center">
-          <div className="bg-primary-600 w-16 h-16 rounded-2xl flex items-center justify-center shadow-lg">
-            <svg className="h-8 w-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
-            </svg>
+          <div className="bg-primary text-primary-foreground w-14 h-14 rounded-2xl flex items-center justify-center shadow-sm">
+            {icon || <Store className="h-7 w-7" />}
           </div>
         </div>
-        <div className="mt-6 text-center">
-          <h2 className="text-3xl font-extrabold text-gray-900 dark:text-white">
+        <div className="mt-4 text-center space-y-1">
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
             {title}
           </h2>
-          <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+          <p className="text-xs sm:text-sm text-muted-foreground">
             {subtitle}
           </p>
-          <div className="absolute top-4 right-4">
-            <ThemeToggle />
-          </div>
         </div>
       </div>
 
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <Card className="shadow-xl bg-white dark:bg-gray-800">
-          <CardContent className="py-8 px-4 sm:px-10">
-            <form 
-              className="space-y-6" 
-              onSubmit={handleSubmit}
-              onKeyPress={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  e.stopPropagation();
-                }
-              }}
-            >
+      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md px-4 sm:px-0">
+        <Card className="shadow-sm border border-border bg-card">
+          <CardContent className="py-8 px-4 sm:px-8 space-y-6">
+            <form className="space-y-5" onSubmit={handleSubmit}>
               {error && (
-                <div className="rounded-md bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 p-4">
-                  <div className="flex">
-                    <div className="flex-shrink-0">
-                      <svg className="h-5 w-5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                    </div>
-                    <div className="ml-3">
-                      <h3 className="text-sm font-medium text-red-800 dark:text-red-200">
-                        Login Error
-                      </h3>
-                      <div className="mt-2 text-sm text-red-700 dark:text-red-300">
-                        <p>{error}</p>
-                      </div>
-                    </div>
+                <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-3.5 flex items-start gap-3">
+                  <AlertTriangle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
+                  <div className="text-xs sm:text-sm">
+                    <p className="font-semibold text-destructive">Authentication Error</p>
+                    <p className="text-destructive/90 mt-0.5">{error}</p>
                   </div>
                 </div>
               )}
-              
-              <div>
-                <label htmlFor="identifier" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Username
+
+              <div className="space-y-1.5">
+                <label htmlFor="identifier" className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  {identifierLabel}
                 </label>
-                <div className="mt-1">
-                  <input
-                    id="identifier"
-                    name="identifier"
-                    type="text"
-                    autoComplete="username"
-                    required
-                    value={identifier}
-                    onChange={(e) => setIdentifier(e.target.value)}
-                    className="appearance-none block w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm placeholder-gray-400 dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 sm:text-sm transition duration-200"
-                    placeholder="Enter your username"
-                  />
-                </div>
+                <input
+                  id="identifier"
+                  name="identifier"
+                  type={identifierType}
+                  autoComplete="username"
+                  required
+                  value={identifier}
+                  onChange={(e) => setIdentifier(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-background border border-input rounded-lg text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all"
+                  placeholder={identifierPlaceholder}
+                />
               </div>
 
-              <div>
-                <label htmlFor="password" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Password
-                </label>
-                <div className="mt-1 relative">
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label htmlFor="password" className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Password
+                  </label>
+                  {showForgotPasswordLink && (
+                    <Link
+                      href="/auth/admin/forgot-password"
+                      className="text-xs font-medium text-primary hover:underline transition-colors"
+                    >
+                      Forgot password?
+                    </Link>
+                  )}
+                </div>
+                <div className="relative">
                   <input
                     id="password"
                     name="password"
@@ -141,70 +131,58 @@ export const LoginForm: React.FC<LoginFormProps> = ({
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="appearance-none block w-full px-4 py-3 pr-12 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm placeholder-gray-400 dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 sm:text-sm transition duration-200"
+                    className="w-full px-3.5 py-2.5 pr-10 bg-background border border-input rounded-lg text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all"
                     placeholder="Enter your password"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword((prev) => !prev)}
-                    className="absolute inset-y-0 right-0 flex items-center pr-4 text-gray-500 dark:text-gray-400 hover:text-primary-600 dark:hover:text-primary-400 focus:outline-none"
+                    className="absolute inset-y-0 right-0 flex items-center pr-3 text-muted-foreground hover:text-foreground focus:outline-none"
                     aria-label={showPassword ? 'Hide password' : 'Show password'}
                   >
                     {showPassword ? (
-                      <EyeOff className="h-5 w-5" />
+                      <EyeOff className="h-4 w-4" />
                     ) : (
-                      <Eye className="h-5 w-5" />
+                      <Eye className="h-4 w-4" />
                     )}
                   </button>
                 </div>
-                <div className="mt-2 text-right">
-                  <Link
-                    href="/auth/admin/forgot-password"
-                    className="text-xs font-medium text-primary-600 hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300 transition duration-200"
-                  >
-                    Forgot your password?
-                  </Link>
-                </div>
               </div>
 
-              <div>
+              <div className="pt-2">
                 <Button
                   type="submit"
                   disabled={loading}
-                  className="w-full"
-                  size="lg"
+                  className="w-full font-semibold h-11 gap-2"
+                  variant="default"
                 >
                   {loading ? (
                     <>
-                      <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
+                      <Loader2 className="h-4 w-4 animate-spin" />
                       Signing in...
                     </>
-                  ) : 'Sign in'}
+                  ) : (
+                    'Sign in'
+                  )}
                 </Button>
               </div>
             </form>
-            
+
             {showBackButton && (
-              <div className="mt-6">
-                <Link 
-                  href="/" 
-                  className="w-full inline-flex justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition duration-200"
-                >
-                  <svg className="mr-2 h-5 w-5 text-gray-500 dark:text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                  </svg>
-                  Back to Home
+              <div className="pt-2 border-t border-border">
+                <Link href="/" className="w-full block">
+                  <Button variant="outline" className="w-full font-semibold gap-2">
+                    <ArrowLeft className="h-4 w-4" />
+                    Back to Home
+                  </Button>
                 </Link>
               </div>
             )}
           </CardContent>
         </Card>
-        
+
         <div className="mt-6 text-center">
-          <p className="text-xs text-gray-500 dark:text-gray-400">
+          <p className="text-xs text-muted-foreground">
             &copy; {new Date().getFullYear()} AJ Softdrive Store. All rights reserved.
           </p>
         </div>

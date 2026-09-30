@@ -3,8 +3,8 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase, supabaseAuth, supabaseDB } from '@/lib/supabaseClient';
+import { ShieldCheck } from 'lucide-react';
 import { LoginForm } from '@/components/ui/LoginForm';
-import { ThemeToggle } from '@/components/ui/ThemeToggle';
 
 export default function AdminLogin() {
   const [loading, setLoading] = useState(false);
@@ -40,17 +40,11 @@ export default function AdminLogin() {
 
       // If user doesn't exist in public.users table, handle accordingly
       if (userError || !userData) {
-        // For demo purposes, we'll allow the user to proceed as admin
-        // In a production environment, you would want to handle this more securely
         console.warn('User not found in public.users table. Proceeding with demo access.');
         console.log('Redirecting to admin dashboard (demo user)');
         
-        // Reset loading state before navigation
         setLoading(false);
-        // Use router.push for navigation without page refresh
-        console.log('Calling router.push to /admin/dashboard');
         router.push('/admin/dashboard');
-        console.log('router.push completed');
         return;
       }
 
@@ -58,23 +52,18 @@ export default function AdminLogin() {
       console.log('User role:', userData.role);
       if (userData?.role !== 'admin') {
         console.log('User is not admin, signing out');
-        // Sign out if not admin
         await supabaseAuth.signOut();
         throw new Error(`Access denied. You have the '${userData.role}' role. Admin access required.`);
       }
 
       console.log('Redirecting to admin dashboard');
-      // Reset loading state before navigation
       setLoading(false);
-      // Use router.push for navigation without page refresh
-      console.log('Calling router.push to /admin/dashboard');
       router.push('/admin/dashboard');
-      console.log('router.push completed');
     } catch (error: any) {
-      console.error('Login error:', error); // Log the actual error for debugging
+      console.error('Login error:', error);
       console.log('=== ADMIN LOGIN PROCESS FAILED ===');
       setError(error.message || 'An unexpected error occurred');
-      setLoading(false); // Reset loading state on error
+      setLoading(false);
     }
     
     console.log('=== ADMIN LOGIN PROCESS COMPLETED ===');
@@ -83,11 +72,16 @@ export default function AdminLogin() {
   return (
     <LoginForm
       title="Admin Login"
-      subtitle="Sign in to access the admin panel"
+      subtitle="Sign in with your email to access administrative controls"
       onSubmit={handleLogin}
       loading={loading}
       error={error}
       showBackButton={true}
+      identifierLabel="Email Address"
+      identifierPlaceholder="admin@example.com"
+      identifierType="email"
+      showForgotPasswordLink={true}
+      icon={<ShieldCheck className="h-7 w-7" />}
     />
   );
 }

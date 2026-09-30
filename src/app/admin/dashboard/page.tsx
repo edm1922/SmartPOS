@@ -1,26 +1,10 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { Card, CardContent, CardHeader } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
 import { useCurrency } from '@/context/CurrencyContext';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Badge } from '@/components/ui/badge';
-import {
-  TrendingUp,
-  Users,
-  Package,
-  PhilippinePeso,
-  Activity,
-  ArrowUpRight,
-  Clock,
-  ShoppingCart,
-  ShieldCheck,
-  AlertCircle,
-  FileText,
-  RefreshCw
-} from 'lucide-react';
+import { Clock, ArrowRight } from 'lucide-react';
 
 export default function AdminDashboard() {
   const { formatPrice } = useCurrency();
@@ -35,7 +19,6 @@ export default function AdminDashboard() {
   });
   const [recentActivity, setRecentActivity] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     fetchDashboardData();
@@ -125,261 +108,186 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleRefresh = async () => {
-    if (refreshing) return;
-    setRefreshing(true);
-    try {
-      await fetchDashboardData(true);
-    } finally {
-      setRefreshing(false);
-    }
-  };
+  const todayLabel = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+
+  const secondaryMetrics = [
+    { label: 'Total Revenue', value: formatPrice(stats.totalRevenue) },
+    { label: 'Products', value: String(stats.productCount) },
+    { label: 'Active Staff', value: String(stats.cashierCount) },
+  ];
+
+  const salesRows = [
+    { label: 'Register Sales', value: formatPrice(stats.registerRevenue) },
+    { label: 'Manual Entry', value: formatPrice(stats.manualRevenue) },
+  ];
+
+  const pending = stats.pendingManual;
 
   return (
     <div className="space-y-8 max-w-7xl mx-auto p-4 md:p-6 animate-fade-in">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-extrabold tracking-tight flex items-center gap-2">
-            <ShieldCheck className="h-8 w-8 text-primary" />
-            Admin Overview
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            Real-time business insights and terminal activity.
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Badge variant="outline" className="px-3 py-1 bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-400 dark:border-green-800 animate-pulse">
-            System Live
-          </Badge>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleRefresh}
-            disabled={refreshing}
-            className="rounded-lg"
-          >
-            <RefreshCw className={`h-4 w-4 mr-1 ${refreshing ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
-        </div>
+      {/* Header */}
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight">Overview</h1>
+        <p className="text-sm text-muted-foreground mt-0.5">Business activity at a glance</p>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-        <DashboardCard
-          title="Lifetime Revenue"
-          value={formatPrice(stats.totalRevenue)}
-          icon={<PhilippinePeso className="h-5 w-5 text-green-600" />}
-          trend="Register + Manual Book"
-          trendUp
-          loading={loading}
-        />
-        <DashboardCard
-          title="Today's Sales"
-          value={formatPrice(stats.todaySales)}
-          icon={<TrendingUp className="h-5 w-5 text-blue-600" />}
-          trend="Real-time daily"
-          loading={loading}
-        />
-        <DashboardCard
-          title="Total Products"
-          value={stats.productCount.toString()}
-          icon={<Package className="h-5 w-5 text-orange-600" />}
-          trend={`${stats.productCount > 0 ? 'Active Catalog' : 'Empty'}`}
-          loading={loading}
-        />
-        <DashboardCard
-          title="Active Staff"
-          value={stats.cashierCount.toString()}
-          icon={<Users className="h-5 w-5 text-purple-600" />}
-          trend="Authorized"
-          loading={loading}
-        />
-      </div>
+      {/* Primary KPI */}
+      <section
+        aria-labelledby="today-sales-heading"
+        className="rounded-lg border bg-card px-6 py-7 lg:px-8 lg:py-9"
+      >
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h2 id="today-sales-heading" className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+              Today's Sales
+            </h2>
+            <div className="mt-2 lg:mt-3">
+              {loading ? (
+                <Skeleton className="h-12 lg:h-14 w-52 lg:w-64" />
+              ) : (
+                <p className="text-4xl lg:text-5xl font-bold tracking-tight tabular-nums">
+                  {formatPrice(stats.todaySales)}
+                </p>
+              )}
+            </div>
+          </div>
+          <p className="text-sm text-muted-foreground pb-1">{todayLabel}</p>
+        </div>
+      </section>
 
-      <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
-        <Card className="border-blue-100 dark:border-blue-900/50 shadow-sm">
-          <CardContent className="pt-6 flex items-center justify-between">
-            <div>
-              <p className="text-xs font-black uppercase tracking-wider text-muted-foreground">Register Sales</p>
-              <p className="text-2xl font-black text-blue-600 mt-1">
-                {loading ? '—' : formatPrice(stats.registerRevenue)}
-              </p>
+      {/* Secondary KPIs */}
+      <section
+        aria-label="Key metrics"
+        className="grid grid-cols-1 divide-y sm:grid-cols-3 sm:divide-y-0 sm:divide-x rounded-lg border bg-card"
+      >
+        {secondaryMetrics.map((metric) => (
+          <div key={metric.label} className="px-6 py-5">
+            <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">{metric.label}</p>
+            <div className="mt-2">
+              {loading ? (
+                <Skeleton className="h-8 w-24" />
+              ) : (
+                <p className="text-3xl font-bold tracking-tight tabular-nums">{metric.value}</p>
+              )}
             </div>
-            <ShoppingCart className="h-8 w-8 text-blue-500/30" />
-          </CardContent>
-        </Card>
-        <Card className="border-amber-100 dark:border-amber-900/50 shadow-sm">
-          <CardContent className="pt-6 flex items-center justify-between">
-            <div>
-              <p className="text-xs font-black uppercase tracking-wider text-muted-foreground">Manual Book Sales</p>
-              <p className="text-2xl font-black text-amber-600 mt-1">
-                {loading ? '—' : formatPrice(stats.manualRevenue)}
-              </p>
-            </div>
-            <FileText className="h-8 w-8 text-amber-500/30" />
-          </CardContent>
-        </Card>
-        <a href="/admin/approvals" className="block">
-          <Card className="border-amber-200 dark:border-amber-800 shadow-sm hover:shadow-md transition-shadow cursor-pointer h-full">
-            <CardContent className="pt-6 flex items-center justify-between">
-              <div>
-                <p className="text-xs font-black uppercase tracking-wider text-muted-foreground">Pending Approvals</p>
-                <p className="text-2xl font-black text-amber-700 mt-1">
-                  {loading ? '—' : stats.pendingManual}
-                </p>
-                <p className="text-[10px] font-bold text-muted-foreground mt-0.5">
-                  {stats.pendingManual > 0 ? 'Waiting for review' : 'Queue is clear'}
-                </p>
+          </div>
+        ))}
+      </section>
+
+      {/* Sales breakdown + Attention */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <section aria-labelledby="sales-heading" className="lg:col-span-2 rounded-lg border bg-card">
+          <header className="px-6 pt-5 pb-3 border-b">
+            <h2 id="sales-heading" className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+              Sales
+            </h2>
+          </header>
+          <div className="px-6 divide-y">
+            {salesRows.map((row) => (
+              <div key={row.label} className="flex items-center justify-between gap-4 py-3.5">
+                <span className="text-sm text-muted-foreground">{row.label}</span>
+                <span className="text-sm font-medium tabular-nums">
+                  {loading ? '—' : row.value}
+                </span>
               </div>
-              <AlertCircle
-                className={`h-8 w-8 ${stats.pendingManual > 0 ? 'text-amber-500 animate-pulse' : 'text-green-500/30'}`}
-              />
-            </CardContent>
-          </Card>
+            ))}
+            <div className="flex items-center justify-between gap-4 py-4">
+              <span className="text-sm font-semibold">Total</span>
+              <span className="text-base font-bold tabular-nums">
+                {loading ? '—' : formatPrice(stats.totalRevenue)}
+              </span>
+            </div>
+          </div>
+        </section>
+
+        {/* Attention */}
+        <a
+          href="/admin/approvals"
+          aria-label="Go to pending approvals"
+          className={`group flex flex-col justify-between rounded-lg border bg-card px-6 py-5 transition-colors ${pending > 0 ? 'border-amber-500/40' : ''}`}
+        >
+          <p className={`text-[11px] font-semibold uppercase tracking-widest ${pending > 0 ? 'text-amber-500' : 'text-muted-foreground'}`}>
+            Attention
+          </p>
+          <div className="mt-4 flex items-baseline justify-between gap-3">
+            <div>
+              <div className="mb-1">
+                {loading ? (
+                  <Skeleton className="h-8 w-10" />
+                ) : (
+                  <p className={`text-3xl font-bold tracking-tight tabular-nums ${pending > 0 ? 'text-amber-500' : 'text-foreground'}`}>
+                    {pending}
+                  </p>
+                )}
+              </div>
+              <p className="text-sm text-muted-foreground">
+                {pending > 0
+                  ? `${pending} request${pending === 1 ? '' : 's'} require review`
+                  : 'No approvals waiting'}
+              </p>
+            </div>
+            <ArrowRight
+              className={`h-4 w-4 shrink-0 transition-transform group-hover:translate-x-0.5 ${pending > 0 ? 'text-amber-500' : 'text-muted-foreground'}`}
+              aria-hidden="true"
+            />
+          </div>
         </a>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <Card className="lg:col-span-2 border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden">
-          <CardHeader className="bg-gray-50/50 dark:bg-gray-900/50 border-b px-6 py-4 flex flex-row items-center justify-between">
-            <h3 className="text-lg font-bold flex items-center gap-2">
-              <Activity className="h-5 w-5 text-primary" />
-              Latest System Activity
-            </h3>
-            <Clock className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent className="p-0">
-            {loading ? (
-              <div className="p-6 space-y-4">
-                {[1, 2, 3, 4, 5].map(i => <Skeleton key={i} className="h-16 w-full rounded-xl" />)}
-              </div>
-            ) : (
-              <ul className="divide-y divide-gray-100 dark:divide-gray-800">
-                {recentActivity.map((activity) => (
-                  <li key={activity.id} className="px-6 py-5 hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition-colors">
-                    <div className="flex items-start gap-4">
-                      <div className={`p-2 rounded-full ${activity.type === 'sale'
-                        ? 'bg-green-100 dark:bg-green-900/30 text-green-600'
-                        : 'bg-blue-100 dark:bg-blue-900/30 text-blue-600'
-                        }`}>
-                        {activity.type === 'sale' ? <ShoppingCart className="h-4 w-4" /> : <ShieldCheck className="h-4 w-4" />}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="text-sm font-bold truncate text-gray-900 dark:text-white">
-                            {activity.action}
-                          </p>
-                          <span className="text-[10px] text-muted-foreground whitespace-nowrap bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">
-                            {new Date(activity.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </span>
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-0.5">{activity.description}</p>
-                        <div className="flex items-center gap-1.5 mt-2">
-                          <Badge variant="secondary" className="text-[9px] px-1.5 py-0 font-medium uppercase tracking-wider">
-                            {activity.user}
-                          </Badge>
-                          <span className="text-[9px] text-gray-400">
-                            {new Date(activity.timestamp).toLocaleDateString()}
-                          </span>
-                        </div>
-                      </div>
+      {/* Recent activity */}
+      <section aria-labelledby="activity-heading" className="rounded-lg border bg-card overflow-hidden">
+        <header className="flex items-center justify-between px-6 pt-5 pb-3 border-b">
+          <h2 id="activity-heading" className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+            Recent Activity
+          </h2>
+          <Clock className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+        </header>
+        {loading ? (
+          <div className="p-6 space-y-4">
+            {[1, 2, 3, 4, 5].map((i) => (
+              <Skeleton key={i} className="h-14 w-full" />
+            ))}
+          </div>
+        ) : recentActivity.length > 0 ? (
+          <ul className="divide-y">
+            {recentActivity.map((activity) => (
+              <li key={activity.id} className="px-6 py-4 hover:bg-muted transition-colors">
+                <div className="flex items-start gap-3">
+                  <span className="mt-2 h-1.5 w-1.5 rounded-full bg-muted-foreground flex-shrink-0" aria-hidden="true" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-medium truncate text-foreground">{activity.action}</p>
+                      <span className="text-xs text-muted-foreground whitespace-nowrap tabular-nums">
+                        {new Date(activity.timestamp).toLocaleString(undefined, {
+                          month: 'short',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </span>
                     </div>
-                  </li>
-                ))}
-                {recentActivity.length === 0 && (
-                  <li className="px-6 py-12 text-center text-muted-foreground">
-                    <AlertCircle className="h-10 w-10 mx-auto mb-3 opacity-20" />
-                    <p className="text-sm">No activity recorded</p>
-                  </li>
-                )}
-              </ul>
-            )}
-            <div className="p-4 bg-gray-50/50 dark:bg-gray-900/50 border-t text-center">
-              <button onClick={() => window.location.href = '/admin/reports'} className="text-xs font-semibold text-primary hover:underline">
-                View Detailed Reports
-              </button>
-            </div>
-          </CardContent>
-        </Card>
-
-        <div className="space-y-6">
-          <Card className="bg-primary text-primary-foreground border-none shadow-xl overflow-hidden relative group">
-            <div className="absolute top-0 right-0 p-4 opacity-20 group-hover:scale-110 transition-transform">
-              <TrendingUp className="h-24 w-24" />
-            </div>
-            <CardContent className="pt-8 p-6 relative z-10">
-              <h4 className="text-xl font-bold">SmartPOS Pro</h4>
-              <p className="text-sm text-primary-foreground/90 mt-2 leading-relaxed">
-                You've generated <strong>{formatPrice(stats.todaySales)}</strong> in sales today across your terminal.
-              </p>
-              <div className="mt-6 space-y-3">
-                <button
-                  onClick={() => window.location.href = '/admin/products'}
-                  className="w-full bg-white/10 hover:bg-white/20 transition-colors py-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 shadow-sm"
-                >
-                  <Package className="h-3 w-3" /> Manage Inventory
-                </button>
-                <button
-                  onClick={() => window.location.href = '/admin/cashiers'}
-                  className="w-full bg-white text-primary hover:bg-gray-100 transition-colors py-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 shadow-sm"
-                >
-                  <Users className="h-3 w-3" /> Staff Management
-                </button>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="border-gray-100 dark:border-gray-800 shadow-sm">
-            <CardContent className="p-6">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="h-10 w-10 rounded-xl bg-orange-50 dark:bg-orange-900/20 flex items-center justify-center text-orange-600">
-                  <Package className="h-5 w-5" />
+                    <div className="flex items-center justify-between gap-3 mt-0.5">
+                      <p className="text-xs text-muted-foreground truncate">{activity.description}</p>
+                      <span className="text-xs text-muted-foreground whitespace-nowrap">{activity.user}</span>
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <h4 className="text-sm font-bold">Catalog Health</h4>
-                  <p className="text-[10px] text-muted-foreground">Database integrity check</p>
-                </div>
-              </div>
-              <div className="space-y-3">
-                <div className="flex justify-between text-xs py-2 border-b border-gray-100 dark:border-gray-800">
-                  <span className="text-muted-foreground">Sync Status</span>
-                  <span className="font-bold text-green-600">Healthy</span>
-                </div>
-                <div className="flex justify-between text-xs py-2">
-                  <span className="text-muted-foreground">Cache Status</span>
-                  <span className="font-bold">Optimized</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="px-6 py-12 text-sm text-muted-foreground text-center">No activity recorded</p>
+        )}
+        <div className="border-t px-6 py-3 flex justify-end">
+          <a
+            href="/admin/reports"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary-600 dark:text-primary-400 hover:underline"
+          >
+            View Detailed Reports
+            <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+          </a>
         </div>
-      </div>
+      </section>
     </div>
-  );
-}
-
-function DashboardCard({ title, value, icon, trend, trendUp, loading }: any) {
-  return (
-    <Card className="border-gray-100 dark:border-gray-800 shadow-sm hover:shadow-md transition-all group overflow-hidden">
-      <CardContent className="p-6">
-        <div className="flex items-start justify-between">
-          <div className="space-y-1">
-            <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-1">{title}</p>
-            {loading ? (
-              <Skeleton className="h-8 w-28" />
-            ) : (
-              <h3 className="text-2xl font-black tracking-tight text-gray-900 dark:text-white">{value}</h3>
-            )}
-            <p className="text-[10px] text-muted-foreground mt-2 flex items-center gap-1 font-medium">
-              {trendUp && <ArrowUpRight className="h-3 w-3 text-green-500" />}
-              {trend}
-            </p>
-          </div>
-          <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-2xl group-hover:bg-primary/10 transition-colors">
-            {icon}
-          </div>
-        </div>
-      </CardContent>
-    </Card>
   );
 }

@@ -5,20 +5,12 @@ import { useRouter } from 'next/navigation';
 import { supabase, supabaseAuth, supabaseDB } from '@/lib/supabaseClient';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
-import {
-  Card,
-  CardHeader,
-  CardContent,
-  CardFooter,
-  CardTitle,
-  CardDescription
-} from '@/components/ui/Card';
+import { Card, CardContent } from '@/components/ui/Card';
 import { useCurrency } from '@/context/CurrencyContext';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import { PRODUCT_CATEGORIES } from '@/lib/constants';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
 import {
   Search,
   Barcode,
@@ -26,23 +18,18 @@ import {
   Trash2,
   Plus,
   Minus,
-  Settings,
   LogOut,
   Box,
-  Filter,
   CheckCircle2,
   AlertTriangle,
-  Receipt,
   CreditCard,
   Wallet,
   Monitor,
   Landmark,
   CalendarDays,
-  Check,
   FileText,
   HandCoins,
   Banknote,
-  ChevronDown,
   Printer,
   Users,
   Pencil,
@@ -672,48 +659,13 @@ export default function CashierPOS() {
     setTimeout(() => window.print(), 50);
   };
 
-  const cancelTermPayment = async () => {
-    if (!termReceiptData?.id) return;
-    try {
-      setIsTermReceiptOpen(false);
-      setSuccessMessage('Cancelling payment...');
-      const { error } = await supabase.rpc('undo_term_payment', {
-        p_payment_id: termReceiptData.id
-      });
-      if (error) {
-        console.warn('RPC undo_term_payment failed, using fallback direct cancellation:', error);
-        const { data: allocs } = await supabase
-          .from('term_payment_allocations')
-          .select('transaction_id, amount')
-          .eq('term_payment_id', termReceiptData.id);
-
-        if (allocs && allocs.length > 0) {
-          for (const alloc of allocs) {
-            const { data: tx } = await supabase
-              .from('transactions')
-              .select('term_paid_amount')
-              .eq('id', alloc.transaction_id)
-              .single();
-            if (tx) {
-              const newAmount = Math.max(0, (Number(tx.term_paid_amount) || 0) - Number(alloc.amount));
-              await supabase
-                .from('transactions')
-                .update({ term_paid_amount: newAmount })
-                .eq('id', alloc.transaction_id);
-            }
-          }
-        }
-
-        await supabase.from('term_payment_allocations').delete().eq('term_payment_id', termReceiptData.id);
-        const { error: delErr } = await supabase.from('term_payments').delete().eq('id', termReceiptData.id);
-        if (delErr) throw delErr;
-      }
-      setSuccessMessage('Payment cancelled successfully.');
-      setTimeout(() => setSuccessMessage(null), 3000);
-    } catch (err: any) {
-      console.error('Cancel payment error:', err);
-      setError('Failed to cancel payment: ' + (err.message || 'Unknown error'));
-    }
+  // Undoing a term payment is deliberately absent from the cashier register.
+  // It destroys the record of money that was received, so it is an admin action
+  // performed from the Term Accounts page. This also fixes a bug: the receipt's
+  // Close button used to call the undo handler, so simply closing the receipt
+  // silently reversed the payment.
+  const closeTermReceipt = () => {
+    setIsTermReceiptOpen(false);
   };
 
   const searchTermCustomer = async (query: string) => {
@@ -871,56 +823,41 @@ export default function CashierPOS() {
       const cashierId = typeof window !== 'undefined' ? sessionStorage.getItem('cashier_id') : null;
       if (!cashierId) throw new Error('Cashier information not found.');
 
-      const { data: paymentData, error: paymentError } = await supabase
-        .from('term_payments')
-        .insert({
-          customer_id: rpSelectedCustomer.id,
-          cashier_id: cashierId,
-          amount: amount,
-          payment_method: rpPaymentMethod,
-          reference_number: ['card', 'mobile', 'cheque'].includes(rpPaymentMethod) ? rpReferenceNumber : null,
-          notes: rpNotes.trim() || null
-        })
-        .select()
-        .single();
-      if (paymentError) throw paymentError;
-
+      // One server-side call instead of insert + per-allocation insert + per-row
+      // update. It writes the audit row too, which a cashier cannot do directly:
+      // they hold the anon key and activity_logs requires user_id = auth.uid().
+const perTxAlloc: Record<string, number> = {};
+      const allocPayload: { transaction_id: string; amount: number }[] = [];
       let remaining = amount;
-      const perTxAlloc: Record<string, number> = {};
+      let overrideAlloc = 0;
       for (const tx of rpOutstanding) {
         if (remaining <= 0) break;
         const owed = (Number(tx.term_remaining_balance) || Number(tx.total_amount)) - (Number(tx.term_paid_amount) || 0);
         const alloc = Math.min(remaining, owed);
+        if (alloc <= 0) continue;
         perTxAlloc[tx.id] = alloc;
-
         if (tx.id === 'balance_override') {
-          const newOverrideBalance = owed - alloc;
-          const { error: overrideError } = await supabase
-            .from('customers')
-            .update({ balance_override: newOverrideBalance })
-            .eq('id', rpSelectedCustomer.id);
-          if (overrideError) throw overrideError;
+          // The override bucket is not a transaction row, so the server settles
+          // it via p_override_alloc rather than a FIFO allocation line.
+          overrideAlloc += alloc;
         } else {
-          const { error: allocError } = await supabase
-            .from('term_payment_allocations')
-            .insert({
-              term_payment_id: paymentData.id,
-              transaction_id: tx.id,
-              amount: alloc
-            });
-          if (allocError) throw allocError;
-
-          const newPaid = (Number(tx.term_paid_amount) || 0) + alloc;
-          const { error: updateError } = await supabase
-            .rpc('update_transaction_term_paid_amount', {
-              p_transaction_id: tx.id,
-              p_term_paid_amount: newPaid
-            });
-          if (updateError) throw updateError;
+          allocPayload.push({ transaction_id: tx.id, amount: alloc });
         }
-
         remaining -= alloc;
       }
+
+      const { data: paymentData, error: paymentError } = await supabase.rpc('record_term_payment', {
+        p_customer_id: rpSelectedCustomer.id,
+        p_cashier_id: cashierId,
+        p_amount: amount,
+        p_override_alloc: overrideAlloc,
+        p_cashier_name: user?.cashier_username || null,
+        p_payment_method: rpPaymentMethod,
+        p_reference_number: ['card', 'mobile', 'cheque'].includes(rpPaymentMethod) ? rpReferenceNumber : null,
+        p_notes: rpNotes.trim() || null,
+        p_allocations: allocPayload,
+      });
+      if (paymentError) throw paymentError;
 
       setTermReceiptData({
         id: paymentData.id,
@@ -1002,16 +939,20 @@ export default function CashierPOS() {
     }
     setCfSaving(true);
     try {
+      const nowIso = new Date().toISOString();
       const payload = {
         name: cfName.trim(),
         address: cfAddress.trim() || null,
         tin_number: cfTinNumber.trim() || null,
         balance_override: parseFloat(cfBalanceOverride) || 0,
+        // Track when this manual balance was last set so the Term Accounts
+        // roster can age it and mark old balances overdue (60-day grace).
+        balance_override_updated_at: nowIso,
       };
       if (editingCustomer) {
         const { error } = await supabase
           .from('customers')
-          .update({ ...payload, updated_at: new Date().toISOString() })
+          .update({ ...payload, updated_at: nowIso })
           .eq('id', editingCustomer.id);
         if (error) throw error;
       } else {
@@ -1079,7 +1020,7 @@ export default function CashierPOS() {
       <div className="h-screen bg-background flex flex-col overflow-hidden print:hidden">
         <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[100] flex flex-col gap-2 w-full max-w-sm px-4">
           {error && (
-            <div className="bg-red-600 text-white px-4 py-3 rounded-xl shadow-2xl flex items-center justify-between animate-in slide-in-from-top duration-300">
+            <div className="bg-red-600 text-white px-4 py-3 rounded-xl shadow-2xl flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <AlertTriangle className="h-5 w-5" />
                 <p className="text-sm font-bold">{error}</p>
@@ -1088,7 +1029,7 @@ export default function CashierPOS() {
             </div>
           )}
           {successMessage && (
-            <div className="bg-primary text-white px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 animate-in slide-in-from-top duration-300">
+            <div className="bg-primary text-white px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3">
               <CheckCircle2 className="h-5 w-5" />
               <p className="text-sm font-bold">{successMessage}</p>
             </div>
@@ -1099,7 +1040,7 @@ export default function CashierPOS() {
           <div className="flex items-center gap-4">
             <img src="/logo.jpg" alt="Logo" className="h-10 w-10 rounded-xl object-cover shadow-lg shadow-primary/20" />
             <div>
-              <h1 className="text-lg font-black tracking-tight dark:text-white uppercase leading-none">SmartPOS <span className="text-primary text-[10px] bg-primary/10 px-1.5 py-0.5 rounded-md ml-1">Terminal</span></h1>
+              <h1 className="text-lg font-bold tracking-tight dark:text-white uppercase leading-none">SmartPOS Terminal</h1>
               <p className="text-[10px] text-muted-foreground font-bold mt-1 uppercase flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
                 Operator: {user?.cashier_username || 'Staff'}
@@ -1110,11 +1051,11 @@ export default function CashierPOS() {
           <div className="flex items-center gap-2">
             <ThemeToggle />
             <div className="h-8 w-px bg-border mx-2" />
-            <Button onClick={() => setIsDailyReportOpen(true)} variant="outline" size="sm" className="font-bold text-xs flex items-center gap-2 border-dashed border-primary/50 text-primary hover:bg-primary/10"><FileText className="h-4 w-4 hidden md:block" /> DAILY REPORT</Button>
-            <Button onClick={() => {setIsReceivePaymentOpen(true); setRpCustomerName(''); setRpSelectedCustomer(null); setRpAmount(''); setRpOutstanding([]); setRpTxItems({}); setRpPreview([]); setRpNotes('');}} variant="outline" size="sm" className="font-bold text-xs flex items-center gap-2 border-dashed border-orange-500/50 text-orange-600 hover:bg-orange-50"><HandCoins className="h-4 w-4 hidden md:block" /> RECEIVE</Button>
-            <Button onClick={() => { setIsCustomerListOpen(true); fetchCustomerList(); }} variant="outline" size="sm" className="font-bold text-xs flex items-center gap-2 border-dashed border-blue-500/50 text-blue-600 hover:bg-blue-50"><Users className="h-4 w-4 hidden md:block" /> CUSTOMERS</Button>
-            <Button onClick={() => setIsManualEntryOpen(true)} variant="outline" size="sm" className="font-bold text-xs flex items-center gap-2 border-dashed border-amber-500/50 text-amber-600 hover:bg-amber-50"><FileText className="h-4 w-4 hidden md:block" /> MANUAL{pendingManualCount > 0 ? ` (${pendingManualCount})` : ''}</Button>
-            <Button onClick={handleSignOut} variant="destructive" size="sm" className="font-bold text-xs flex items-center gap-2"><LogOut className="h-4 w-4" /> LOGOUT</Button>
+            <Button onClick={() => setIsDailyReportOpen(true)} variant="outline" size="sm" className="font-semibold text-xs flex items-center gap-2 hover:bg-muted"><FileText className="h-4 w-4 hidden md:block" /> DAILY REPORT</Button>
+            <Button onClick={() => {setIsReceivePaymentOpen(true); setRpCustomerName(''); setRpSelectedCustomer(null); setRpAmount(''); setRpOutstanding([]); setRpTxItems({}); setRpPreview([]); setRpNotes('');}} variant="outline" size="sm" className="font-semibold text-xs flex items-center gap-2 hover:bg-muted"><HandCoins className="h-4 w-4 hidden md:block" /> RECEIVE</Button>
+            <Button onClick={() => { setIsCustomerListOpen(true); fetchCustomerList(); }} variant="outline" size="sm" className="font-semibold text-xs flex items-center gap-2 hover:bg-muted"><Users className="h-4 w-4 hidden md:block" /> CUSTOMERS</Button>
+            <Button onClick={() => setIsManualEntryOpen(true)} variant="outline" size="sm" className="font-semibold text-xs flex items-center gap-2 hover:bg-muted"><FileText className="h-4 w-4 hidden md:block" /> MANUAL{pendingManualCount > 0 ? ` (${pendingManualCount})` : ''}</Button>
+            <Button onClick={handleSignOut} variant="destructive" size="sm" className="font-semibold text-xs flex items-center gap-2"><LogOut className="h-4 w-4" /> LOGOUT</Button>
           </div>
         </header>
 
@@ -1155,19 +1096,19 @@ export default function CashierPOS() {
                 </div>
               </div>
               <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
-                <Button variant={selectedCategory === null ? 'default' : 'outline'} size="sm" onClick={() => setSelectedCategory(null)} className="rounded-full text-[10px] uppercase h-8">All Items</Button>
+                <Button variant={selectedCategory === null ? 'default' : 'outline'} size="sm" onClick={() => setSelectedCategory(null)} className="rounded-lg text-[10px] uppercase h-8">All Items</Button>
                 {PRODUCT_CATEGORIES.map((category) => (
-                  <Button key={category} variant={selectedCategory === category ? 'default' : 'outline'} size="sm" onClick={() => setSelectedCategory(category)} className="rounded-full text-[10px] uppercase h-8">{category}</Button>
+                  <Button key={category} variant={selectedCategory === category ? 'default' : 'outline'} size="sm" onClick={() => setSelectedCategory(category)} className="rounded-lg text-[10px] uppercase h-8">{category}</Button>
                 ))}
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6 scrollbar-thin">
+            <div className="flex-1 overflow-y-auto p-6">
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
                 {filteredProducts.map((product) => (
                   <div key={product.id} className="group relative" onClick={() => addToCart(product)}>
                     <Card className={`h-full flex flex-col cursor-pointer transition-all border-border overflow-hidden ${product.stock_quantity <= 0 ? 'opacity-60 grayscale' : ''}`}>
-                      <div className="aspect-square bg-gray-100 dark:bg-gray-800 flex items-center justify-center relative overflow-hidden">
+                      <div className="aspect-square bg-muted flex items-center justify-center relative overflow-hidden">
                         {product.image_url ? (
                           <img src={product.image_url} alt={product.name} className="h-full w-full object-cover transition-transform group-hover:scale-110 duration-500" />
                         ) : (
@@ -1181,7 +1122,7 @@ export default function CashierPOS() {
                           <p className="text-[10px] text-muted-foreground font-mono">{product.barcode || 'NO BARCODE'}</p>
                         </div>
                         <div className="flex items-center justify-between mt-2">
-                          <span className={`text-[9px] font-black uppercase ${product.stock_quantity > 10 ? 'text-green-500' : 'text-orange-500'}`}>Stock: {product.stock_quantity}</span>
+                          <span className={`text-[9px] font-bold uppercase ${product.stock_quantity > 10 ? 'text-green-500' : 'text-orange-500'}`}>Stock: {product.stock_quantity}</span>
                           <div className="h-6 w-6 rounded-full bg-primary text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><Plus className="h-3 w-3" /></div>
                         </div>
                       </CardContent>
@@ -1192,35 +1133,34 @@ export default function CashierPOS() {
             </div>
           </section>
 
-          <aside className="w-[400px] bg-card border-l border-border flex flex-col shadow-2xl relative z-10">
-            <div className="p-6 border-b border-border shrink-0">
-              <div className="flex items-center justify-between">
-                <h2 className="text-xl font-black uppercase dark:text-white flex items-center gap-2"><ShoppingCart className="h-5 w-5 text-primary" /> Checkout</h2>
-                <Badge variant="outline">{cart.length} Items</Badge>
-              </div>
+<aside className="w-[400px] bg-card border-l border-border flex flex-col relative z-10">
+          <div className="p-6 border-b border-border shrink-0">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-bold uppercase dark:text-white">Checkout</h2>
+              <Badge variant="outline">{cart.length} Items</Badge>
             </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-3">
-              {cart.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center opacity-20">
-                  <ShoppingCart className="h-16 w-16 mb-4" />
-                  <p className="text-sm font-bold uppercase tracking-widest">Cart is Empty</p>
-                </div>
-              ) : (
-                cart.map((item) => (
-                  <div key={item.id} className="bg-gray-50 dark:bg-gray-800/50 p-3 rounded-2xl border border-transparent hover:border-primary/20 transition-all">
+          </div>
+          <div className="flex-1 overflow-y-auto p-4 space-y-3">
+            {cart.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center">
+                <p className="text-sm font-bold uppercase tracking-widest text-muted-foreground">Cart is Empty</p>
+              </div>
+            ) : (
+              cart.map((item) => (
+                <div key={item.id} className="bg-muted/50 p-3 rounded-lg border border-border transition-all">
                     <div className="flex justify-between items-start mb-2">
                       <div className="flex-1">
                         <h4 className="text-sm font-bold dark:text-white leading-tight">{item.name}</h4>
-                        <p className="text-xs text-primary font-bold">{formatPrice(item.price)}</p>
+                        <p className="text-xs text-muted-foreground font-bold">{formatPrice(item.price)}</p>
                       </div>
                       <button onClick={() => removeFromCart(item.id)} className="text-gray-400 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
                     </div>
-                    <div className="flex items-center justify-between bg-background rounded-xl p-1 shadow-sm">
+                    <div className="flex items-center justify-between bg-background rounded-lg p-1">
                       <div className="flex items-center gap-1">
                         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => updateQuantity(item.id, item.quantity - 1)}><Minus className="h-3 w-3" /></Button>
                         <Input
                           type="number"
-                          className="w-10 h-8 text-center text-xs font-black bg-transparent border-none p-0 focus-visible:ring-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                          className="w-10 h-8 text-center text-xs font-bold bg-transparent border-none p-0 focus-visible:ring-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                           value={item.quantity}
                           onChange={(e) => {
                             const val = parseInt(e.target.value);
@@ -1234,9 +1174,9 @@ export default function CashierPOS() {
                           }}
                           onFocus={(e) => e.target.select()}
                         />
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-primary" onClick={() => updateQuantity(item.id, item.quantity + 1)} disabled={item.quantity >= item.stock_quantity}><Plus className="h-3 w-3" /></Button>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" onClick={() => updateQuantity(item.id, item.quantity + 1)} disabled={item.quantity >= item.stock_quantity}><Plus className="h-3 w-3" /></Button>
                       </div>
-                      <span className="text-sm font-black pr-2">{formatPrice(item.price * item.quantity)}</span>
+                      <span className="text-sm font-bold pr-2">{formatPrice(item.price * item.quantity)}</span>
                     </div>
                   </div>
                 ))
@@ -1244,14 +1184,14 @@ export default function CashierPOS() {
             </div>
             <div className="p-6 bg-muted/30 border-t border-border shrink-0 space-y-4">
               <div className="space-y-1">
-                <div className="flex justify-between items-center text-2xl font-black dark:text-white">
+                <div className="flex justify-between items-center text-2xl font-bold dark:text-white">
                   <span className="text-sm uppercase">Total</span>
-                  <span className="text-primary">{formatPrice(calculateTotal())}</span>
+                  <span className="text-foreground">{formatPrice(calculateTotal())}</span>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <Button variant="outline" className="h-14 rounded-2xl font-bold uppercase text-xs" onClick={() => setCart([])} disabled={cart.length === 0}>Clear</Button>
-                <Button className="h-14 rounded-2xl font-black uppercase text-xs shadow-xl" onClick={handleProcessPayment} disabled={cart.length === 0}>Pay Now</Button>
+                <Button variant="outline" className="h-12 rounded-lg font-bold uppercase text-xs" onClick={() => setCart([])} disabled={cart.length === 0}>Clear</Button>
+                <Button className="h-12 rounded-lg font-bold uppercase text-xs" onClick={handleProcessPayment} disabled={cart.length === 0}>Pay Now</Button>
               </div>
             </div>
           </aside>
@@ -1264,11 +1204,11 @@ export default function CashierPOS() {
               {applyDiscount && discountAmount > 0 ? (
                 <>
                   <p className="text-lg font-bold text-muted-foreground line-through">{formatPrice(calculateTotal())}</p>
-                  <h2 className="text-5xl font-black text-green-600">{formatPrice(parseFloat((calculateTotal() - discountAmount).toFixed(2)))}</h2>
-                  <p className="text-xs font-bold text-green-600 mt-1">-{formatPrice(discountAmount)} Discount</p>
+                  <h2 className="text-5xl font-bold text-foreground">{formatPrice(parseFloat((calculateTotal() - discountAmount).toFixed(2)))}</h2>
+                  <p className="text-xs font-bold text-muted-foreground mt-1">-{formatPrice(discountAmount)} Discount</p>
                 </>
               ) : (
-                <h2 className="text-5xl font-black text-primary">{formatPrice(calculateTotal())}</h2>
+                <h2 className="text-5xl font-bold text-foreground">{formatPrice(calculateTotal())}</h2>
               )}
             </div>
             <div className="grid grid-cols-5 gap-4">
@@ -1279,28 +1219,28 @@ export default function CashierPOS() {
               <PaymentTab active={paymentMethod === 'term'} onClick={() => setPaymentMethod('term')} icon={<CalendarDays className="h-5 w-5" />} label="Term" />
             </div>
             {paymentMethod === 'cash' && (
-              <div className="bg-muted/50 p-6 rounded-3xl border border-border">
-                <label className="block text-xs font-black uppercase text-gray-600 dark:text-gray-400 mb-3 text-center">Amount Tendered</label>
+              <div className="bg-muted/50 p-6 rounded-xl border border-border">
+                <label className="block text-[11px] font-bold uppercase text-muted-foreground mb-3 text-center">Amount Tendered</label>
                 <div className="relative">
-                  <Input type="number" className="h-20 text-center text-4xl font-black bg-card rounded-2xl" placeholder="0.00" value={amountReceived} onChange={(e) => setAmountReceived(e.target.value)} autoFocus />
-                  <div className="absolute left-6 top-1/2 -translate-y-1/2 text-2xl font-black text-gray-300">₱</div>
+                  <Input type="number" className="h-16 text-center text-2xl font-bold bg-card rounded-lg" placeholder="0.00" value={amountReceived} onChange={(e) => setAmountReceived(e.target.value)} autoFocus />
+                  <div className="absolute left-6 top-1/2 -translate-y-1/2 text-2xl font-bold text-gray-300">₱</div>
                 </div>
                 {parseFloat(amountReceived) >= (applyDiscount && discountAmount > 0 ? parseFloat((calculateTotal() - discountAmount).toFixed(2)) : calculateTotal()) && (
-                  <div className="mt-6 text-center animate-in zoom-in duration-300">
-                    <p className="text-xs font-black text-green-600 uppercase mb-1">Change Due</p>
-                    <h3 className="text-4xl font-black text-green-700">{formatPrice(calculateChange())}</h3>
+                  <div className="mt-6 text-center">
+                    <p className="text-xs font-bold text-muted-foreground uppercase mb-1">Change Due</p>
+                    <h3 className="text-4xl font-bold text-foreground">{formatPrice(calculateChange())}</h3>
                   </div>
                 )}
               </div>
             )}
             
             {['card', 'mobile', 'cheque'].includes(paymentMethod) && (
-              <div className="bg-muted/50 p-6 rounded-3xl border border-border">
-                <label className="block text-xs font-black uppercase text-gray-600 dark:text-gray-400 mb-3 text-center">Reference / Trace Number</label>
+              <div className="bg-muted/50 p-6 rounded-xl border border-border">
+                <label className="block text-[11px] font-bold uppercase text-muted-foreground mb-3 text-center">Reference / Trace Number</label>
                 <div className="relative">
                   <Input 
                     type="text" 
-                    className="h-20 text-center text-4xl font-black bg-card rounded-2xl" 
+                    className="h-16 text-center text-2xl font-bold bg-card rounded-lg" 
                     placeholder={`Enter ${paymentMethod} reference...`} 
                     value={referenceNumber} 
                     onChange={(e) => setReferenceNumber(e.target.value)} 
@@ -1311,23 +1251,23 @@ export default function CashierPOS() {
             )}
 
             {paymentMethod === 'term' && (
-              <div className="bg-muted/50 p-6 rounded-3xl border border-border space-y-4">
+              <div className="bg-muted/50 p-6 rounded-xl border border-border space-y-4">
                 <div>
-                  <label className="block text-xs font-black uppercase text-gray-600 dark:text-gray-400 mb-3 text-center">Terms Duration</label>
+                  <label className="block text-[11px] font-bold uppercase text-muted-foreground mb-3 text-center">Terms Duration</label>
                   <div className="relative">
                     <Input
                       type="number"
-                      className="h-20 text-center text-4xl font-black bg-card rounded-2xl"
+                      className="h-16 text-center text-2xl font-bold bg-card rounded-lg"
                       placeholder="30"
                       min={1}
                       value={termDays || ''}
                       onChange={(e) => setTermDays(Math.max(1, parseInt(e.target.value) || 1))}
                       autoFocus
                     />
-                    <span className="absolute right-6 top-1/2 -translate-y-1/2 text-2xl font-black text-muted-foreground">Days</span>
+                    <span className="absolute right-6 top-1/2 -translate-y-1/2 text-2xl font-bold text-muted-foreground">Days</span>
                   </div>
                 </div>
-                <div className="bg-background rounded-xl p-3 space-y-1">
+                <div className="bg-background rounded-lg p-3 space-y-1">
                   {(() => {
                     const rawTotal = calculateTotal();
                     const discAmount = applyDiscount && discountAmount > 0 ? discountAmount : 0;
@@ -1346,8 +1286,8 @@ export default function CashierPOS() {
                           <span className="font-bold">{formatPrice(discTotal)}</span>
                         </div>
                         <div className="border-t border-border pt-1 flex justify-between text-sm">
-                          <span className="font-black">Due Date</span>
-                          <span className="font-black text-orange-600">{due.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                          <span className="font-bold">Due Date</span>
+                          <span className="font-bold text-foreground">{due.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
                         </div>
                       </>
                     );
@@ -1356,9 +1296,9 @@ export default function CashierPOS() {
               </div>
             )}
             
-            <div className="bg-muted/50 p-4 rounded-3xl border border-border">
+            <div className="bg-muted/50 p-4 rounded-xl border border-border">
               <div className="flex items-center justify-between mb-3">
-                <label className="text-xs font-black uppercase text-gray-600 dark:text-gray-400">Discount</label>
+                <label className="text-[11px] font-bold uppercase text-muted-foreground">Discount</label>
                 <label className="relative inline-flex cursor-pointer items-center">
                   <input
                     type="checkbox"
@@ -1379,7 +1319,7 @@ export default function CashierPOS() {
                     <div className="relative">
                       <Input
                         type="number"
-                        className="h-10 text-center text-lg font-black bg-card rounded-xl pl-8"
+                        className="h-10 text-center text-lg font-bold bg-card rounded-xl pl-8"
                         placeholder="0.00"
                         min={0}
                         max={calculateTotal()}
@@ -1390,7 +1330,7 @@ export default function CashierPOS() {
                       <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-muted-foreground">₱</span>
                     </div>
                   </div>
-                  <div className="bg-background rounded-xl p-3 space-y-1">
+                  <div className="bg-background rounded-lg p-3 space-y-1">
                     <div className="flex justify-between text-xs">
                       <span className="text-muted-foreground">Original</span>
                       <span className="font-bold">{formatPrice(calculateTotal())}</span>
@@ -1400,19 +1340,19 @@ export default function CashierPOS() {
                       <span className="font-bold text-red-500">-{formatPrice(discountAmount)}</span>
                     </div>
                     <div className="border-t border-border pt-1 flex justify-between text-sm">
-                      <span className="font-black">Final</span>
-                      <span className="font-black text-green-600">{formatPrice(parseFloat((calculateTotal() - discountAmount).toFixed(2)))}</span>
+                      <span className="font-bold">Final</span>
+                      <span className="font-bold text-foreground">{formatPrice(parseFloat((calculateTotal() - discountAmount).toFixed(2)))}</span>
                     </div>
                   </div>
                 </div>
               )}
             </div>
 
-            <div className="bg-muted/50 p-4 rounded-3xl border border-border">
-              <label className="block text-xs font-black uppercase text-gray-600 dark:text-gray-400 mb-2 text-center">Customer Name (optional)</label>
+            <div className="bg-muted/50 p-4 rounded-xl border border-border">
+              <label className="block text-[11px] font-bold uppercase text-muted-foreground mb-2 text-center">Customer Name (optional)</label>
               <Input
                 type="text"
-                className="h-12 text-center text-base font-bold bg-card rounded-2xl"
+                className="h-12 text-center text-base font-bold bg-card rounded-lg"
                 placeholder="e.g. Humphrey Bogart"
                 value={customerName}
                 onChange={(e) => setCustomerName(e.target.value)}
@@ -1420,12 +1360,12 @@ export default function CashierPOS() {
             </div>
 
             {paymentMethod === 'term' && (
-              <div className="bg-muted/50 p-4 rounded-3xl border border-border">
-                <label className="block text-xs font-black uppercase text-gray-600 dark:text-gray-400 mb-2 text-center">Link to Existing Customer</label>
+              <div className="bg-muted/50 p-4 rounded-xl border border-border">
+                <label className="block text-[11px] font-bold uppercase text-muted-foreground mb-2 text-center">Link to Existing Customer</label>
                 <div className="relative">
                   <Input
                     type="text"
-                    className="h-12 text-center text-base font-bold bg-card rounded-2xl"
+                    className="h-12 text-center text-base font-bold bg-card rounded-lg"
                     placeholder="Search customer..."
                     value={termCustSearch}
                     onChange={(e) => {
@@ -1452,11 +1392,11 @@ export default function CashierPOS() {
                 {termCustSelected && (
                   <div className="mt-3 bg-card rounded-xl p-3 border border-border">
                     <div className="flex items-center justify-between">
-                      <span className="text-sm font-bold text-green-600">✓ {termCustSelected.name}</span>
+                      <span className="text-sm font-bold text-foreground">✓ {termCustSelected.name}</span>
                       <button className="text-[10px] text-muted-foreground underline" onClick={() => { setTermCustSelected(null); setTermCustSearch(''); setTermCustOutstanding(0); }}>Clear</button>
                     </div>
                     {termCustOutstanding > 0 && (
-                      <p className="text-xs text-red-500 font-bold mt-1">Outstanding: ₱{termCustOutstanding.toFixed(2)}</p>
+                      <p className="text-xs text-red-500 font-bold mt-1">Outstanding: {formatPrice(termCustOutstanding)}</p>
                     )}
                   </div>
                 )}
@@ -1464,18 +1404,17 @@ export default function CashierPOS() {
             )}
 
             <div className="flex gap-4">
-              <Button variant="ghost" className="flex-1 h-14 rounded-2xl font-bold uppercase" onClick={() => setIsPaymentModalOpen(false)}>Back</Button>
-              <Button className="flex-[2] h-14 rounded-2xl font-black uppercase" onClick={completeTransaction}>Finalize</Button>
+              <Button variant="ghost" className="flex-1 h-12 rounded-lg font-bold uppercase" onClick={() => setIsPaymentModalOpen(false)}>Back</Button>
+              <Button className="flex-[2] h-12 rounded-lg font-bold uppercase" onClick={completeTransaction}>Finalize</Button>
             </div>
           </div>
         </Modal>
 
         <Modal isOpen={isReceiptModalOpen} onClose={() => { setIsReceiptModalOpen(false); setPrintMode(null); }} title="Finalized" size="md">
         {receiptData && printMode === 'sale' && (
-            <div className="bg-white p-8 rounded-3xl text-gray-900 shadow-inner">
+            <div className="bg-white p-8 rounded-xl text-gray-900">
               <div className="text-center mb-8">
-                <div className="h-12 w-12 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4 text-primary"><Receipt className="h-6 w-6" /></div>
-                <h2 className="text-2xl font-black uppercase">{settings?.store_name || 'SMART POS'}</h2>
+                <h2 className="text-2xl font-bold uppercase">{settings?.store_name || 'SMART POS'}</h2>
                 {settings?.show_address_on_receipt && settings?.store_address && (
                   <p className="text-gray-500 text-sm mt-1">{settings.store_address}</p>
                 )}
@@ -1490,24 +1429,24 @@ export default function CashierPOS() {
                 )}
               </div>
               <div className={`grid ${receiptData.paymentMethod === 'term' ? 'grid-cols-3' : receiptData.referenceNumber ? 'grid-cols-3' : 'grid-cols-2'} gap-4 border-y border-dashed border-gray-200 py-6 mb-8 text-xs`}>
-                <div><p className="font-black text-gray-400 uppercase">Order Ref</p><p className="font-mono font-bold">{receiptData.id.substring(0, 8).toUpperCase()}</p></div>
+                <div><p className="font-bold text-gray-400 uppercase">Order Ref</p><p className="font-mono font-bold">{receiptData.id.substring(0, 8).toUpperCase()}</p></div>
                 {receiptData.paymentMethod === 'term' ? (
-                  <div className="text-center"><p className="font-black text-gray-400 uppercase">Full Amount</p><p className="font-mono font-bold">{formatPrice(receiptData.total)}</p></div>
+                  <div className="text-center"><p className="font-bold text-gray-400 uppercase">Full Amount</p><p className="font-mono font-bold">{formatPrice(receiptData.total)}</p></div>
                 ) : receiptData.referenceNumber ? (
-                  <div className="text-center"><p className="font-black text-gray-400 uppercase">Payment Ref</p><p className="font-mono font-bold uppercase">{receiptData.referenceNumber}</p></div>
+                  <div className="text-center"><p className="font-bold text-gray-400 uppercase">Payment Ref</p><p className="font-mono font-bold uppercase">{receiptData.referenceNumber}</p></div>
                 ) : null}
-                <div className="text-right"><p className="font-black text-gray-400 uppercase">Method</p><Badge className="text-[8px] font-black uppercase h-4 px-1.5">{receiptData.paymentMethod}</Badge></div>
+                <div className="text-right"><p className="font-bold text-gray-400 uppercase">Method</p><Badge className="text-[8px] font-bold uppercase h-4 px-1.5">{receiptData.paymentMethod}</Badge></div>
               </div>
 
               {receiptData.paymentMethod === 'term' && (
-                <div className="bg-orange-50 border border-orange-100 rounded-2xl p-4 mb-8 flex justify-between items-center">
+                <div className="bg-muted/50 border border-border rounded-lg p-4 mb-8 flex justify-between items-center">
                   <div>
-                    <p className="text-[10px] font-black text-orange-700 uppercase">Amount Due</p>
-                    <p className="text-xl font-black text-orange-700">{formatPrice(receiptData.remainingBalance || receiptData.total)}</p>
+                    <p className="text-[10px] font-bold text-muted-foreground uppercase">Amount Due</p>
+                    <p className="text-xl font-bold text-foreground">{formatPrice(receiptData.remainingBalance || receiptData.total)}</p>
                   </div>
                   <div className="text-right">
-                    <p className="text-[10px] font-black text-orange-700 uppercase">Due Date</p>
-                    <p className="text-base font-black text-orange-700">{new Date(receiptData.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p>
+                    <p className="text-[10px] font-bold text-muted-foreground uppercase">Due Date</p>
+                    <p className="text-base font-bold text-foreground">{new Date(receiptData.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p>
                   </div>
                 </div>
               )}
@@ -1515,7 +1454,7 @@ export default function CashierPOS() {
               {/* Editable Fields for Receipt */}
               <div className="grid grid-cols-3 gap-2 mb-8">
                 <div>
-                  <label className="block text-[10px] font-black text-gray-400 uppercase mb-1">Delivered To</label>
+                  <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Delivered To</label>
                   <Input
                     placeholder="Buyer..."
                     value={deliveredTo}
@@ -1524,7 +1463,7 @@ export default function CashierPOS() {
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-black text-gray-400 uppercase mb-1">TIN</label>
+                  <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">TIN</label>
                   <Input
                     placeholder="TIN..."
                     value={tin}
@@ -1533,18 +1472,18 @@ export default function CashierPOS() {
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-black text-gray-400 uppercase mb-1">Purchase Order</label>
+                  <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Purchase Order</label>
                   <Input
                     placeholder="Serial #"
                     value={orNumber}
                     onChange={(e) => setOrNumber(e.target.value)}
-                    className="h-8 text-xs font-bold border-red-200 focus:border-red-500 text-red-600"
+                    className="h-8 text-xs font-bold"
                   />
                 </div>
               </div>
 
               {/* Signature Toggle - Modern Minimal */}
-              <div className="bg-card p-5 rounded-2xl mb-8 border border-border shadow-lg">
+              <div className="bg-card p-5 rounded-lg mb-8 border border-border">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div className={`p-2.5 rounded-xl transition-all ${showSignatures ? 'bg-primary/10 text-primary' : 'bg-gray-100 dark:bg-gray-700 text-gray-400'}`}>
@@ -1573,7 +1512,7 @@ export default function CashierPOS() {
               <div className="mb-8">
                 <table className="w-full border-collapse border border-gray-200 text-xs">
                   <thead>
-                    <tr className="bg-gray-50 uppercase text-[9px] font-black text-gray-400">
+                    <tr className="bg-gray-50 uppercase text-[9px] font-bold text-gray-400">
                       <th className="border border-gray-200 px-2 py-1 text-center">Qty</th>
                       <th className="border border-gray-200 px-2 py-1 text-left">Description</th>
                       <th className="border border-gray-200 px-2 py-1 text-right">Amount</th>
@@ -1587,13 +1526,13 @@ export default function CashierPOS() {
                           <p className="font-bold text-gray-800 uppercase text-[10px]">{item.name}</p>
                           <p className="text-[9px] text-gray-400 font-bold">@{formatPrice(item.price)}</p>
                         </td>
-                        <td className="border border-gray-200 px-2 py-1 text-right font-black">{formatPrice(item.price * item.quantity)}</td>
+                        <td className="border border-gray-200 px-2 py-1 text-right font-bold">{formatPrice(item.price * item.quantity)}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-              <div className="bg-gray-50 p-6 rounded-2xl mb-8 space-y-3">
+              <div className="bg-gray-50 p-6 rounded-lg mb-8 space-y-3">
                 <div className="flex justify-between items-center text-gray-600">
                   <span className="text-xs font-bold uppercase">VATable Sales</span>
                   <span className="font-bold">{formatPrice(receiptData.total / (1 + (settings?.tax_rate || 12) / 100))}</span>
@@ -1602,7 +1541,7 @@ export default function CashierPOS() {
                   <span className="text-xs font-bold uppercase">Less VAT</span>
                   <span className="font-bold">{formatPrice(receiptData.total - (receiptData.total / (1 + (settings?.tax_rate || 12) / 100)))}</span>
                 </div>
-                <div className="border-t border-dashed border-gray-300 pt-3 flex justify-between items-center text-xl font-black text-gray-900">
+                <div className="border-t border-dashed border-gray-300 pt-3 flex justify-between items-center text-xl font-bold text-gray-900">
                   <span className="text-sm uppercase">Total Sales (VAT Inclusive)</span>
                   <span className="text-2xl">{formatPrice(receiptData.total)}</span>
                 </div>
@@ -1616,8 +1555,8 @@ export default function CashierPOS() {
                 )}
               </div>
               <div className="flex gap-4">
-                <Button variant="ghost" className="flex-1 h-12 rounded-2xl font-bold uppercase" onClick={cancelTransaction}>Close</Button>
-                <Button className="flex-[2] h-12 rounded-2xl font-black uppercase" onClick={printReceipt}>Print Ticket</Button>
+                <Button variant="ghost" className="flex-1 h-12 rounded-lg font-bold uppercase" onClick={cancelTransaction}>Close</Button>
+                <Button className="flex-[2] h-12 rounded-lg font-bold uppercase" onClick={printReceipt}>Print Ticket</Button>
               </div>
             </div>
           )}
@@ -1625,14 +1564,9 @@ export default function CashierPOS() {
 
         <Modal isOpen={isReceivePaymentOpen} onClose={() => setIsReceivePaymentOpen(false)}>
           <div className="p-6 max-w-lg mx-auto">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="h-10 w-10 rounded-2xl bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
-                <HandCoins className="h-5 w-5 text-orange-600" />
-              </div>
-              <div>
-                <h2 className="text-lg font-black">Receive Term Payment</h2>
-                <p className="text-xs text-muted-foreground font-bold">Record an incoming payment for outstanding term transactions</p>
-              </div>
+            <div className="mb-6">
+              <h2 className="text-lg font-bold">Receive Term Payment</h2>
+              <p className="text-xs text-muted-foreground">Record an incoming payment for outstanding term transactions</p>
             </div>
 
             <div className="space-y-5">
@@ -1677,17 +1611,17 @@ export default function CashierPOS() {
                       const isOverride = tx.id === 'balance_override';
                       const productNames = rpTxItems[tx.id] || [];
                       return (
-                        <div key={tx.id} className={`rounded-xl p-3 border ${isOverride ? 'bg-blue-50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800' : 'bg-card border-border'}`}>
+                        <div key={tx.id} className={`rounded-lg p-3 border ${isOverride ? 'bg-card border-border' : 'bg-card border-border'}`}>
                           <div className="flex justify-between items-start">
                             <div>
                               {isOverride ? (
-                                <p className="text-xs font-bold text-blue-600">Manual Balance</p>
+                                <p className="text-xs font-bold text-muted-foreground">Manual Balance</p>
                               ) : (
                                 <p className="text-xs font-mono font-bold text-muted-foreground">#{tx.id.slice(0, 8).toUpperCase()}</p>
                               )}
                               <p className="text-[10px] text-muted-foreground">{isOverride ? 'Set in Customers modal' : new Date(tx.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p>
                             </div>
-                            <span className="text-sm font-black text-red-500">₱{owed.toFixed(2)} remaining</span>
+                            <span className="text-sm font-bold text-red-500">{formatPrice(owed)} remaining</span>
                           </div>
                           {!isOverride && productNames.length > 0 && (
                             <p className="text-[10px] text-muted-foreground font-bold mt-1 truncate">{productNames.join(', ')}</p>
@@ -1700,19 +1634,19 @@ export default function CashierPOS() {
               )}
 
               {rpOutstanding.length > 0 && (
-                <div className="bg-orange-50 dark:bg-orange-900/10 border border-orange-200 dark:border-orange-800 rounded-2xl p-4 space-y-2">
+                <div className="bg-muted/50 border border-border rounded-lg p-4 space-y-2">
                   <div className="flex justify-between items-center">
-                    <span className="text-xs font-bold text-orange-700 uppercase">Outstanding Balance</span>
-                    <span className="text-xl font-black text-orange-700">
+                    <span className="text-xs font-bold text-muted-foreground uppercase">Outstanding Balance</span>
+                    <span className="text-xl font-bold text-foreground">
                       {formatPrice(rpOutstanding.reduce((sum, tx) => sum + ((tx.term_remaining_balance || tx.total_amount) - (tx.term_paid_amount || 0)), 0))}
                     </span>
                   </div>
-                  <p className="text-[10px] text-orange-600 font-bold">{rpOutstanding.length} transaction{rpOutstanding.length !== 1 ? 's' : ''} awaiting payment</p>
+                  <p className="text-[10px] text-muted-foreground font-bold">{rpOutstanding.length} transaction{rpOutstanding.length !== 1 ? 's' : ''} awaiting payment</p>
                 </div>
               )}
 
               {rpOutstanding.length === 0 && rpSelectedCustomer && (
-                <div className="bg-green-50 dark:bg-green-900/10 border border-green-200 dark:border-green-800 rounded-2xl p-4">
+                <div className="bg-green-50 dark:bg-green-900/10 border border-green-200 dark:border-green-800 rounded-lg p-4">
                   <p className="text-sm font-bold text-green-700 text-center">No outstanding term transactions.</p>
                 </div>
               )}
@@ -1722,13 +1656,13 @@ export default function CashierPOS() {
                   <div>
                     <label className="block text-xs font-bold text-muted-foreground uppercase mb-1.5">Payment Amount</label>
                     <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-lg font-black text-muted-foreground">₱</span>
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-lg font-bold text-muted-foreground">₱</span>
                       <Input
                         type="number"
                         placeholder="0.00"
                         value={rpAmount}
                         onChange={(e) => { setRpAmount(e.target.value); recalcRpPreview(e.target.value); }}
-                        className="h-12 pl-8 text-lg font-black"
+                        className="h-12 pl-8 text-lg font-bold"
                         step="0.01"
                         min="0"
                       />
@@ -1742,13 +1676,13 @@ export default function CashierPOS() {
                         <button
                           key={m}
                           onClick={() => setRpPaymentMethod(m)}
-                          className={`py-2 rounded-xl border-2 text-xs font-black uppercase transition-all ${
+                          className={`py-2 rounded-lg border-2 text-xs font-bold uppercase transition-all flex items-center justify-center gap-1.5 ${
                             rpPaymentMethod === m
-                              ? 'bg-orange-500 border-orange-500 text-white shadow-lg'
-                              : 'bg-card border-border text-muted-foreground hover:border-orange-500/50'
+                              ? 'bg-primary border-primary text-primary-foreground'
+                              : 'bg-card border-border text-muted-foreground hover:border-primary/50'
                           }`}
                         >
-                          {m === 'cash' ? '💵' : m === 'card' ? '💳' : m === 'mobile' ? '📱' : '📄'} {m}
+                          {m === 'cash' ? <Banknote className="h-4 w-4" /> : m === 'card' ? <CreditCard className="h-4 w-4" /> : m === 'mobile' ? <Monitor className="h-4 w-4" /> : <Landmark className="h-4 w-4" />} {m}
                         </button>
                       ))}
                     </div>
@@ -1779,7 +1713,7 @@ export default function CashierPOS() {
                   {rpPreview.length > 0 && (
                     <div>
                       <label className="block text-xs font-bold text-muted-foreground uppercase mb-1.5">Allocation Preview <span className="text-muted-foreground/50">(FIFO)</span></label>
-                      <div className="bg-muted/50 rounded-2xl p-3 space-y-2">
+                      <div className="bg-muted/50 rounded-lg p-3 space-y-2">
                         {rpPreview.map((p, i) => (
                           <div key={i} className="flex justify-between items-center py-1.5 border-b border-border last:border-0">
                             <div className="flex items-center gap-2">
@@ -1793,12 +1727,12 @@ export default function CashierPOS() {
                                 </p>
                               </div>
                             </div>
-                            <span className="text-sm font-black text-green-600">{formatPrice(p.allocated)}</span>
+                            <span className="text-sm font-bold text-foreground">{formatPrice(p.allocated)}</span>
                           </div>
                         ))}
                         <div className="flex justify-between items-center pt-2 border-t-2 border-dashed border-border">
                           <span className="text-xs font-bold uppercase text-muted-foreground">Total Applied</span>
-                          <span className="text-base font-black">{formatPrice(rpPreview.reduce((sum, p) => sum + p.allocated, 0))}</span>
+                          <span className="text-base font-bold">{formatPrice(rpPreview.reduce((sum, p) => sum + p.allocated, 0))}</span>
                         </div>
                       </div>
                     </div>
@@ -1808,9 +1742,9 @@ export default function CashierPOS() {
             </div>
 
             <div className="flex gap-4 mt-8">
-              <Button variant="ghost" className="flex-1 h-12 rounded-2xl font-bold uppercase" onClick={() => setIsReceivePaymentOpen(false)}>Cancel</Button>
+              <Button variant="ghost" className="flex-1 h-12 rounded-lg font-bold uppercase" onClick={() => setIsReceivePaymentOpen(false)}>Cancel</Button>
               <Button
-                className="flex-[2] h-12 rounded-2xl font-black uppercase bg-orange-500 hover:bg-orange-600"
+                className="flex-[2] h-12 rounded-lg font-bold uppercase"
                 onClick={completeTermPayment}
                 disabled={!rpSelectedCustomer || rpOutstanding.length === 0 || !rpAmount || parseFloat(rpAmount) <= 0}
               >
@@ -1822,10 +1756,9 @@ export default function CashierPOS() {
 
         <Modal isOpen={isTermReceiptOpen} onClose={() => setIsTermReceiptOpen(false)} title="Term Payment" size="md">
           {termReceiptData && (
-            <div className="bg-white p-8 rounded-3xl text-gray-900 shadow-inner">
+            <div className="bg-white p-8 rounded-xl text-gray-900">
               <div className="text-center mb-8">
-                <div className="h-12 w-12 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4 text-primary"><Receipt className="h-6 w-6" /></div>
-                <h2 className="text-2xl font-black uppercase">{settings?.store_name || 'SMART POS'}</h2>
+                <h2 className="text-2xl font-bold uppercase">{settings?.store_name || 'SMART POS'}</h2>
                 {settings?.show_address_on_receipt && settings?.store_address && (
                   <p className="text-gray-500 text-sm mt-1">{settings.store_address}</p>
                 )}
@@ -1836,12 +1769,12 @@ export default function CashierPOS() {
               </div>
 
               <div className="grid grid-cols-3 gap-4 border-y border-dashed border-gray-200 py-6 mb-8 text-xs">
-                <div><p className="font-black text-gray-400 uppercase">Payment Ref</p><p className="font-mono font-bold">{termReceiptData.id.substring(0, 8).toUpperCase()}</p></div>
-                <div className="text-center"><p className="font-black text-gray-400 uppercase">Amount Paid</p><p className="font-mono font-bold">{formatPrice(termReceiptData.amount)}</p></div>
-                <div className="text-right"><p className="font-black text-gray-400 uppercase">Method</p><Badge className="text-[8px] font-black uppercase h-4 px-1.5">{termReceiptData.paymentMethod}</Badge></div>
+                <div><p className="font-bold text-gray-400 uppercase">Payment Ref</p><p className="font-mono font-bold">{termReceiptData.id.substring(0, 8).toUpperCase()}</p></div>
+                <div className="text-center"><p className="font-bold text-gray-400 uppercase">Amount Paid</p><p className="font-mono font-bold">{formatPrice(termReceiptData.amount)}</p></div>
+                <div className="text-right"><p className="font-bold text-gray-400 uppercase">Method</p><Badge className="text-[8px] font-bold uppercase h-4 px-1.5">{termReceiptData.paymentMethod}</Badge></div>
               </div>
 
-              <div className="bg-gray-50 p-6 rounded-2xl mb-8 space-y-2">
+              <div className="bg-gray-50 p-6 rounded-lg mb-8 space-y-2">
                 <div className="flex justify-between items-center text-gray-600">
                   <span className="text-xs font-bold uppercase">Customer</span>
                   <span className="font-bold text-gray-900">{termReceiptData.customerName}</span>
@@ -1871,7 +1804,7 @@ export default function CashierPOS() {
               <div className="mb-8">
                 <table className="w-full border-collapse border border-gray-200 text-xs">
                   <thead>
-                    <tr className="bg-gray-50 uppercase text-[9px] font-black text-gray-400">
+                    <tr className="bg-gray-50 uppercase text-[9px] font-bold text-gray-400">
                       <th className="border border-gray-200 px-2 py-1 text-left">Transaction</th>
                       <th className="border border-gray-200 px-2 py-1 text-right">Applied</th>
                     </tr>
@@ -1882,7 +1815,7 @@ export default function CashierPOS() {
                         <td className="border border-gray-200 px-2 py-1 font-mono font-bold text-gray-800 text-[10px]">
                           {a.transactionId === 'balance_override' ? 'Manual Balance' : `#${a.transactionId.substring(0, 8)}`}
                         </td>
-                        <td className="border border-gray-200 px-2 py-1 text-right font-black text-green-600">{formatPrice(a.amount)}</td>
+                        <td className="border border-gray-200 px-2 py-1 text-right font-bold text-foreground">{formatPrice(a.amount)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1890,12 +1823,12 @@ export default function CashierPOS() {
                 <p className="text-[9px] text-gray-400 font-bold mt-1">FIFO allocation — manual balance paid first, then oldest transactions</p>
               </div>
 
-              <div className="bg-gray-50 p-6 rounded-2xl mb-8 space-y-3">
+              <div className="bg-gray-50 p-6 rounded-lg mb-8 space-y-3">
                 <div className="flex justify-between items-center text-gray-600">
                   <span className="text-xs font-bold uppercase">Total Paid</span>
-                  <span className="font-bold text-green-600">{formatPrice(termReceiptData.amount)}</span>
+                  <span className="font-bold text-foreground">{formatPrice(termReceiptData.amount)}</span>
                 </div>
-                <div className="border-t border-dashed border-gray-300 pt-3 flex justify-between items-center text-xl font-black text-gray-900">
+                <div className="border-t border-dashed border-gray-300 pt-3 flex justify-between items-center text-xl font-bold text-gray-900">
                   <span className="text-sm uppercase">Remaining Balance</span>
                   <span>{formatPrice(termReceiptData.remainingBalance)}</span>
                 </div>
@@ -1906,8 +1839,8 @@ export default function CashierPOS() {
               </div>
 
               <div className="flex gap-4">
-                <Button variant="ghost" className="flex-1 h-12 rounded-2xl font-bold uppercase" onClick={cancelTermPayment}>Close</Button>
-                <Button className="flex-[2] h-12 rounded-2xl font-black uppercase" onClick={printTermReceipt}><Printer className="h-4 w-4 mr-2" /> Print Ticket</Button>
+                <Button variant="ghost" className="flex-1 h-12 rounded-lg font-bold uppercase" onClick={closeTermReceipt}>Close</Button>
+                <Button className="flex-[2] h-12 rounded-lg font-bold uppercase" onClick={printTermReceipt}><Printer className="h-4 w-4 mr-2" /> Print Ticket</Button>
               </div>
             </div>
           )}
@@ -1989,7 +1922,7 @@ export default function CashierPOS() {
             </div>
             <Button
               onClick={() => { setEditingCustomer(null); setCfName(''); setCfAddress(''); setCfTinNumber(''); setCfBalanceOverride('0'); setIsCustomerFormOpen(true); }}
-              className="ml-3 h-10 rounded-2xl font-bold uppercase bg-blue-600 hover:bg-blue-700 text-white"
+              className="ml-3 h-10 rounded-lg font-bold uppercase"
             >
               <UserPlus className="h-4 w-4 mr-2" /> Add Customer
             </Button>
@@ -2013,7 +1946,7 @@ export default function CashierPOS() {
                   return (c.name || '').toLowerCase().includes(q) || (c.address || '').toLowerCase().includes(q);
                 })
                 .map((c) => (
-                  <div key={c.id} className="bg-card rounded-xl px-5 py-4 border border-border hover:border-blue-200 transition-colors">
+                  <div key={c.id} className="bg-card rounded-xl px-5 py-4 border border-border hover:border-muted transition-colors">
                     <div className="flex items-start justify-between">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
@@ -2028,17 +1961,17 @@ export default function CashierPOS() {
                         <div className="flex items-center gap-3 mt-2">
                           <div>
                             <p className="text-[10px] font-bold text-muted-foreground uppercase">Term Balance</p>
-                            <p className="text-xs font-black text-orange-600">₱{c.term_balance.toFixed(2)}</p>
+                            <p className="text-xs font-bold text-orange-600">{formatPrice(c.term_balance)}</p>
                           </div>
                           {(c.balance_override || 0) !== 0 && (
                             <div>
                               <p className="text-[10px] font-bold text-muted-foreground uppercase">Override</p>
-                              <p className="text-xs font-black text-blue-600">₱{(c.balance_override || 0).toFixed(2)}</p>
+                              <p className="text-xs font-bold text-muted-foreground">{formatPrice(c.balance_override || 0)}</p>
                             </div>
                           )}
                           <div>
                             <p className="text-[10px] font-bold text-muted-foreground uppercase">Total Balance</p>
-                            <p className={`text-xs font-black ${c.total_balance > 0 ? 'text-red-600' : 'text-green-600'}`}>₱{c.total_balance.toFixed(2)}</p>
+                            <p className={`text-xs font-bold ${c.total_balance > 0 ? 'text-red-600' : 'text-green-600'}`}>{formatPrice(c.total_balance)}</p>
                           </div>
                         </div>
                       </div>
@@ -2046,7 +1979,7 @@ export default function CashierPOS() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="h-8 w-8 p-0 text-muted-foreground hover:text-blue-600"
+                          className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
                           onClick={() => {
                             setEditingCustomer(c);
                             setCfName(c.name || '');
@@ -2077,15 +2010,10 @@ export default function CashierPOS() {
 
       <Modal isOpen={isCustomerFormOpen} onClose={() => { setIsCustomerFormOpen(false); setEditingCustomer(null); }} title={editingCustomer ? 'Edit Customer' : 'Add Customer'} size="md">
         <div className="p-6">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="h-10 w-10 rounded-2xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-              <UserPlus className="h-5 w-5 text-blue-600" />
-            </div>
-            <div>
-              <h2 className="text-lg font-black">{editingCustomer ? 'Edit Customer' : 'New Customer'}</h2>
+          <div className="mb-6">
+              <h2 className="text-lg font-bold">{editingCustomer ? 'Edit Customer' : 'New Customer'}</h2>
               <p className="text-xs text-muted-foreground font-bold">{editingCustomer ? 'Update customer details and balance' : 'Fill in the customer details below'}</p>
             </div>
-          </div>
 
           <div className="space-y-4">
             <div>
@@ -2121,13 +2049,13 @@ export default function CashierPOS() {
             <div>
               <label className="block text-xs font-bold text-muted-foreground uppercase mb-1.5">Account / Remaining Balance</label>
               <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-lg font-black text-muted-foreground">₱</span>
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-lg font-bold text-muted-foreground">₱</span>
                 <Input
                   type="number"
                   placeholder="0.00"
                   value={cfBalanceOverride}
                   onChange={(e) => setCfBalanceOverride(e.target.value)}
-                  className="h-12 pl-8 text-lg font-black"
+                  className="h-12 pl-8 text-lg font-bold"
                   step="0.01"
                 />
               </div>
@@ -2138,13 +2066,13 @@ export default function CashierPOS() {
           <div className="flex gap-4 mt-8">
             <Button
               variant="ghost"
-              className="flex-1 h-12 rounded-2xl font-bold uppercase"
+              className="flex-1 h-12 rounded-lg font-bold uppercase"
               onClick={() => { setIsCustomerFormOpen(false); setEditingCustomer(null); }}
             >
               Cancel
             </Button>
             <Button
-              className="flex-[2] h-12 rounded-2xl font-black uppercase bg-blue-600 hover:bg-blue-700 text-white"
+              className="flex-[2] h-12 rounded-lg font-bold uppercase"
               onClick={saveCustomer}
               disabled={cfSaving || !cfName.trim()}
             >
@@ -2176,9 +2104,9 @@ export default function CashierPOS() {
 
 function PaymentTab({ active, onClick, icon, label }: any) {
   return (
-    <button onClick={onClick} className={`flex flex-col items-center justify-center h-24 rounded-3xl border-2 transition-all gap-2 ${active ? 'bg-primary border-primary text-primary-foreground shadow-xl' : 'bg-card border-border text-muted-foreground hover:border-primary/50'}`}>
-      <span className={active ? 'text-primary-foreground' : 'text-muted-foreground'}>{icon}</span>
-      <span className={`text-[10px] font-black uppercase tracking-widest ${active ? 'text-primary-foreground' : 'text-foreground'}`}>{label}</span>
+    <button onClick={onClick} className={`flex flex-col items-center justify-center h-16 rounded-lg border-2 transition-all gap-1 ${active ? 'bg-muted border-primary text-foreground' : 'bg-card border-border text-muted-foreground hover:border-primary/50'}`}>
+      <span className="text-muted-foreground">{icon}</span>
+      <span className={`text-[10px] font-bold uppercase tracking-widest ${active ? 'text-foreground' : 'text-muted-foreground'}`}>{label}</span>
     </button>
   );
 }

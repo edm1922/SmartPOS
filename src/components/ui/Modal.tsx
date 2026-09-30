@@ -62,7 +62,7 @@ export const Modal: React.FC<ModalProps> = ({
     <div className="fixed inset-0 z-50 overflow-y-auto">
       {/* Background overlay with improved transition */}
       <div 
-        className="fixed inset-0 bg-black bg-opacity-60 transition-opacity duration-300 ease-out"
+        className="fixed inset-0 bg-black bg-black/60 transition-opacity duration-300 ease-out"
         onClick={handleBackdropClick}
       ></div>
 

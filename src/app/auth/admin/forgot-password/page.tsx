@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { KeyRound, CheckCircle2, AlertTriangle, ArrowLeft, Loader2 } from 'lucide-react';
 import { supabaseAuth } from '@/lib/supabaseClient';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent } from '@/components/ui/Card';
@@ -31,115 +32,115 @@ export default function ForgotPassword() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-background text-foreground flex flex-col justify-center py-12 sm:px-6 lg:px-8 relative selection:bg-primary selection:text-primary-foreground">
+      {/* Top Bar Theme Toggle */}
+      <div className="absolute top-4 right-4 z-10">
+        <ThemeToggle />
+      </div>
+
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <div className="flex justify-center">
-          <div className="bg-primary-600 w-16 h-16 rounded-2xl flex items-center justify-center shadow-lg">
-            <svg className="h-8 w-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
-            </svg>
+          <div className="bg-primary text-primary-foreground w-14 h-14 rounded-2xl flex items-center justify-center shadow-sm">
+            <KeyRound className="h-7 w-7" />
           </div>
         </div>
-        <div className="mt-6 text-center">
-          <h2 className="text-3xl font-extrabold text-gray-900 dark:text-white">
+        <div className="mt-4 text-center space-y-1">
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
             Forgot Password?
           </h2>
-          <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
-            Enter your email and we'll send you a link to reset your password.
+          <p className="text-xs sm:text-sm text-muted-foreground">
+            Enter your admin email and we'll send a password reset link.
           </p>
-          <div className="absolute top-4 right-4">
-            <ThemeToggle />
-          </div>
         </div>
       </div>
 
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <Card className="shadow-xl bg-white dark:bg-gray-800">
-          <CardContent className="py-8 px-4 sm:px-10">
+      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md px-4 sm:px-0">
+        <Card className="shadow-sm border border-border bg-card">
+          <CardContent className="py-8 px-4 sm:px-8 space-y-6">
             {success ? (
-              <div className="text-center">
-                <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-green-100 dark:bg-green-900/30">
-                  <svg className="h-6 w-6 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
+              <div className="text-center space-y-4 py-2">
+                <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+                  <CheckCircle2 className="h-6 w-6" />
                 </div>
-                <h3 className="mt-3 text-lg font-medium text-gray-900 dark:text-white">Email Sent</h3>
-                <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
-                  Check your inbox for a password reset link.
-                </p>
-                <div className="mt-6">
-                  <Link
-                    href="/auth/admin/login"
-                    className="w-full inline-flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition duration-200"
-                  >
-                    Back to Login
+                <div className="space-y-1">
+                  <h3 className="text-base font-bold text-foreground">Reset Link Sent</h3>
+                  <p className="text-xs text-muted-foreground max-w-xs mx-auto">
+                    Check your inbox at <span className="font-semibold text-foreground">{email}</span> for instructions to reset your password.
+                  </p>
+                </div>
+                <div className="pt-4 border-t border-border">
+                  <Link href="/auth/admin/login" className="w-full block">
+                    <Button variant="default" className="w-full font-semibold h-11">
+                      Back to Admin Login
+                    </Button>
                   </Link>
                 </div>
               </div>
             ) : (
-              <form className="space-y-6" onSubmit={handleSubmit}>
+              <form className="space-y-5" onSubmit={handleSubmit}>
                 {error && (
-                  <div className="rounded-md bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 p-4">
-                    <div className="flex">
-                      <div className="flex-shrink-0">
-                        <svg className="h-5 w-5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                      </div>
-                      <div className="ml-3">
-                        <h3 className="text-sm font-medium text-red-800 dark:text-red-200">
-                          Error
-                        </h3>
-                        <div className="mt-2 text-sm text-red-700 dark:text-red-300">
-                          <p>{error}</p>
-                        </div>
-                      </div>
+                  <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-3.5 flex items-start gap-3">
+                    <AlertTriangle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
+                    <div className="text-xs sm:text-sm">
+                      <p className="font-semibold text-destructive">Error</p>
+                      <p className="text-destructive/90 mt-0.5">{error}</p>
                     </div>
                   </div>
                 )}
                 
-                <div>
-                  <label htmlFor="email" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                <div className="space-y-1.5">
+                  <label htmlFor="email" className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     Email Address
                   </label>
-                  <div className="mt-1">
-                    <input
-                      id="email"
-                      name="email"
-                      type="email"
-                      autoComplete="email"
-                      required
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className="appearance-none block w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm placeholder-gray-400 dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 sm:text-sm transition duration-200"
-                      placeholder="admin@example.com"
-                    />
-                  </div>
+                  <input
+                    id="email"
+                    name="email"
+                    type="email"
+                    autoComplete="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-background border border-input rounded-lg text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all"
+                    placeholder="admin@example.com"
+                  />
                 </div>
 
-                <div>
+                <div className="pt-2">
                   <Button
                     type="submit"
                     disabled={loading}
-                    className="w-full"
-                    size="lg"
+                    className="w-full font-semibold h-11 gap-2"
+                    variant="default"
                   >
-                    {loading ? 'Sending link...' : 'Send reset link'}
+                    {loading ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Sending link...
+                      </>
+                    ) : (
+                      'Send reset link'
+                    )}
                   </Button>
                 </div>
 
-                <div className="text-center">
-                  <Link
-                    href="/auth/admin/login"
-                    className="text-sm font-medium text-primary-600 hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300 transition duration-200"
-                  >
-                    Return to Login
+                <div className="pt-2 border-t border-border">
+                  <Link href="/auth/admin/login" className="w-full block">
+                    <Button variant="outline" className="w-full font-semibold gap-2">
+                      <ArrowLeft className="h-4 w-4" />
+                      Return to Admin Login
+                    </Button>
                   </Link>
                 </div>
               </form>
             )}
           </CardContent>
         </Card>
+
+        <div className="mt-6 text-center">
+          <p className="text-xs text-muted-foreground">
+            &copy; {new Date().getFullYear()} AJ Softdrive Store. All rights reserved.
+          </p>
+        </div>
       </div>
     </div>
   );

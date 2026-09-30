@@ -19,6 +19,7 @@ import {
   Package,
   RotateCcw,
   Pencil,
+  UserCircle,
   X,
 } from 'lucide-react';
 
@@ -29,6 +30,17 @@ interface SelectableProduct {
   stock_quantity: number;
   category?: string;
   barcode?: string;
+}
+
+/**
+ * A customer row as the Sold By box needs it. TIN/address are read alongside the
+ * name so picking a known buyer can fill the matching BIR receipt fields.
+ */
+interface SelectableCustomer {
+  id: string;
+  name: string;
+  address?: string | null;
+  tin_number?: string | null;
 }
 
 /**
@@ -76,7 +88,6 @@ export function ManualEntryModal({
 
   // --- form state ---
   const [manualRef, setManualRef] = useState('');
-  const [atpRef, setAtpRef] = useState('');
   const [transactionDate, setTransactionDate] = useState(todayIso());
   const [soldBy, setSoldBy] = useState('');
   const [buyerTin, setBuyerTin] = useState('');
@@ -87,6 +98,16 @@ export function ManualEntryModal({
   const [termDueDate, setTermDueDate] = useState('');
   const [amountReceived, setAmountReceived] = useState('');
   const [notes, setNotes] = useState('');
+
+  // --- Sold By / customer linking ---
+  // soldBy stays free text (a hand-written BIR receipt may name no one), while
+  // selectedCustomer records an explicit pick so the approved transaction can
+  // be attributed to a real customer row. An unlinked entry still submits; it
+  // just has no customer_id.
+  const [selectedCustomer, setSelectedCustomer] = useState<SelectableCustomer | null>(null);
+  const [customerMatches, setCustomerMatches] = useState<SelectableCustomer[]>([]);
+  const [customerOpen, setCustomerOpen] = useState(false);
+  const [customerHighlight, setCustomerHighlight] = useState(-1);
 
   // --- the single line-item composer ---
   // One bar for the whole modal: it searches/scans the catalogue, accepts free
@@ -128,7 +149,6 @@ export function ManualEntryModal({
 
   const resetForm = useCallback(() => {
     setManualRef('');
-    setAtpRef('');
     setTransactionDate(todayIso());
     setSoldBy('');
     setBuyerTin('');
@@ -145,9 +165,127 @@ export function ManualEntryModal({
     setEditingKey(null);
     setDraftFlash(null);
     setEditingId(null);
+    setSelectedCustomer(null);
+    setCustomerMatches([]);
+    setCustomerOpen(false);
+    setCustomerHighlight(-1);
     setError(null);
     setSuccess(null);
   }, []);
+
+  // Suggest existing customers as the Sold By box is typed. Debounced so a fast
+  // typist causes one query per pause instead of one per keystroke, and capped
+  // because this is an aid, not a full directory listing.
+  useEffect(() => {
+    const term = soldBy.trim();
+    // A name that exactly matches an explicit pick is already resolved; running
+    // a search for it would only flash the picked row back as a suggestion.
+    if (selectedCustomer && term === selectedCustomer.name) {
+      setCustomerMatches([]);
+      return;
+    }
+    if (term.length < 2) {
+      setCustomerMatches([]);
+      return;
+    }
+
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      const { data, error } = await supabase
+        .from('customers')
+        .select('id, name, address, tin_number')
+        .ilike('name', `%${term}%`)
+        .order('name')
+        .limit(8);
+      if (cancelled) return;
+      setCustomerMatches(error ? [] : ((data || []) as SelectableCustomer[]));
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [soldBy, selectedCustomer]);
+
+  // Adopting a known buyer fills the matching BIR receipt fields, but only
+  // where the cashier left them blank: the handwritten receipt is the source of
+  // truth and must not be silently overwritten by a stale customer record.
+  const selectCustomer = (customer: SelectableCustomer) => {
+    setSoldBy(customer.name);
+    setSelectedCustomer(customer);
+    setCustomerMatches([]);
+    setCustomerOpen(false);
+    setCustomerHighlight(-1);
+    if (customer.tin_number) setBuyerTin((prev) => prev || customer.tin_number || '');
+    if (customer.address) setBuyerAddress((prev) => prev || customer.address || '');
+  };
+
+  // Typing after a pick means a different buyer, so the link is dropped and
+  // re-resolved from the new text on submit. Leaving the text alone keeps it.
+  const handleSoldByChange = (value: string) => {
+    setSoldBy(value);
+    if (selectedCustomer && value.trim() !== selectedCustomer.name) {
+      setSelectedCustomer(null);
+    }
+    setCustomerOpen(true);
+    setCustomerHighlight(-1);
+  };
+
+  const moveCustomerHighlight = (delta: number) => {
+    setCustomerOpen(true);
+    setCustomerHighlight((prev) => {
+      const next = prev + delta;
+      if (next < 0) return customerMatches.length - 1;
+      if (next >= customerMatches.length) return 0;
+      return next;
+    });
+  };
+
+  // Turns the Sold By text into a customer_id for the request. Mirrors the
+  // register flow: link the row with a matching name, otherwise create it with
+  // whatever TIN/address is on the receipt. Never throws - losing the link must
+  // not block a receipt the cashier has already written, and the whole block is
+  // already caught, so the entry degrades to an unlinked manual sale.
+  const resolveCustomerId = async (name: string): Promise<string | null> => {
+    const trimmed = name.trim();
+    if (selectedCustomer && trimmed === selectedCustomer.name) {
+      return selectedCustomer.id;
+    }
+    if (!trimmed) return null;
+
+    try {
+      // A customer submitted twice (two cashiers, same buyer, no shared pick)
+      // would insert a second "Juan" row. Check again here and reuse the first
+      // match so one buyer's history can't split across duplicates. limit(1)
+      // rather than maybeSingle, which would error if the name is already
+      // duplicated - there is no unique constraint on customers.name.
+      const { data: existing, error: lookupError } = await supabase
+        .from('customers')
+        .select('id')
+        .ilike('name', trimmed)
+        .order('created_at', { ascending: true })
+        .limit(1);
+
+      if (lookupError) throw lookupError;
+      if (existing && existing.length > 0) return existing[0].id;
+
+      const { data: created, error: insertError } = await supabase
+        .from('customers')
+        .insert({
+          name: trimmed,
+          address: buyerAddress.trim() || null,
+          tin_number: buyerTin.trim() || null,
+        })
+        .select('id')
+        .single();
+
+      if (insertError) throw insertError;
+      return created?.id || null;
+    } catch (err) {
+      console.error('Error linking manual entry to customer:', err);
+      return null;
+    }
+  };
 
   const loadMyRequests = useCallback(async () => {
     if (!cashierId) return;
@@ -373,9 +511,19 @@ export function ManualEntryModal({
 
   const loadRequestIntoForm = (req: ManualEntryRequest) => {
     setManualRef(req.manual_ref || '');
-    setAtpRef(req.atp_ref || '');
     setTransactionDate(req.transaction_date);
     setSoldBy(req.sold_by || '');
+    // Re-select the linked customer so editing a rejected request keeps its
+    // attribution. resubmit_manual_entry_request overwrites customer_id with
+    // whatever this form sends, so without this the link would be dropped.
+    // The TIN/address are omitted on purpose: the receipt fields below are the
+    // ones the cashier must see and correct, not the customer record's copy.
+    setSelectedCustomer(
+      req.customer_id ? { id: req.customer_id, name: req.sold_by || '' } : null
+    );
+    setCustomerMatches([]);
+    setCustomerOpen(false);
+    setCustomerHighlight(-1);
     setBuyerTin(req.buyer_tin || '');
     setBuyerAddress(req.buyer_address || '');
     // Rehydrate with fresh row keys: the stored items carry no _key, and
@@ -451,16 +599,19 @@ export function ManualEntryModal({
       // reserved BIR serial are kept; creating a second row would let two
       // requests compete for the same serial.
       const isResubmit = editingId !== null;
+      // Resolve the Sold By text to a customer row before building the payload:
+      // links an existing buyer, creates one when new, and yields null when the
+      // box is empty so a nameless BIR receipt still records fine.
+      const customerId = await resolveCustomerId(soldBy);
       const payload = {
         p_transaction_date: transactionDate,
         p_items: cleanItems,
         p_payment_method: paymentMethod,
         p_sold_by: soldBy.trim() || null,
         p_manual_ref: manualRef.trim() || null,
-        p_atp_ref: atpRef.trim() || null,
         p_buyer_tin: buyerTin.trim() || null,
         p_buyer_address: buyerAddress.trim() || null,
-        p_customer_id: null,
+        p_customer_id: customerId,
         p_reference_number: referenceNumber.trim() || null,
         p_term_due_date: paymentMethod === 'term' ? termDueDate : null,
         p_amount_received: amountReceived.trim() ? parseFloat(amountReceived) : null,
@@ -508,7 +659,7 @@ export function ManualEntryModal({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Manual Book Entry"
+      title="Manual Entry"
       size="xl"
     >
       <div className="space-y-6">
@@ -585,7 +736,8 @@ export function ManualEntryModal({
             )}
 
             {/* --- header fields --- */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {/* Two columns: Receipt Date and BIR Series / Serial. */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-[10px] font-black uppercase text-muted-foreground mb-1.5">
                   Receipt Date *
@@ -609,30 +761,86 @@ export function ManualEntryModal({
                   className="h-10 font-mono font-bold"
                 />
               </div>
-              <div>
-                <label className="block text-[10px] font-black uppercase text-muted-foreground mb-1.5">
-                  ATP No.
-                </label>
-                <Input
-                  placeholder="Authority to Print"
-                  value={atpRef}
-                  onChange={(e) => setAtpRef(e.target.value)}
-                  className="h-10 font-mono font-bold"
-                />
-              </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div>
+              <div className="relative">
                 <label className="block text-[10px] font-black uppercase text-muted-foreground mb-1.5">
                   Sold By
                 </label>
                 <Input
                   placeholder="Name on the receipt"
                   value={soldBy}
-                  onChange={(e) => setSoldBy(e.target.value)}
+                  onChange={(e) => handleSoldByChange(e.target.value)}
+                  onFocus={() => setCustomerOpen(true)}
+                  onBlur={() => {
+                    // Delay so a click on a suggestion registers first.
+                    setTimeout(() => setCustomerOpen(false), 150);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'ArrowDown') {
+                      e.preventDefault();
+                      moveCustomerHighlight(1);
+                    } else if (e.key === 'ArrowUp') {
+                      e.preventDefault();
+                      moveCustomerHighlight(-1);
+                    } else if (e.key === 'Enter') {
+                      // Only intercept Enter when a suggestion is highlighted,
+                      // so it can never be swallowed by an unopened list.
+                      if (customerOpen && customerHighlight >= 0 && customerMatches[customerHighlight]) {
+                        e.preventDefault();
+                        selectCustomer(customerMatches[customerHighlight]);
+                      }
+                    } else if (e.key === 'Escape') {
+                      if (customerOpen) setCustomerOpen(false);
+                    }
+                  }}
                   className="h-10 font-bold"
                 />
+                {customerOpen && customerMatches.length > 0 && (
+                  <div className="absolute left-0 right-0 top-full z-30 mt-1 bg-card border border-border rounded-xl shadow-lg max-h-56 overflow-y-auto">
+                    {customerMatches.map((c, i) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        // Keep focus in the box so the next character can be
+                        // typed without reaching for the mouse.
+                        onMouseDown={(e) => e.preventDefault()}
+                        onMouseEnter={() => setCustomerHighlight(i)}
+                        onClick={() => selectCustomer(c)}
+                        className={`w-full text-left px-3 py-2.5 border-b border-border last:border-0 flex items-center justify-between gap-2 ${
+                          customerHighlight === i ? 'bg-muted' : 'hover:bg-muted/60'
+                        }`}
+                      >
+                        <span className="min-w-0">
+                          <span className="block text-sm font-bold truncate">{c.name}</span>
+                          <span className="block text-[10px] text-muted-foreground font-medium truncate">
+                            {c.tin_number ? `TIN ${c.tin_number}` : 'Existing customer'}
+                            {c.address ? ` - ${c.address}` : ''}
+                          </span>
+                        </span>
+                        <span className="text-[10px] font-black text-primary shrink-0 uppercase">
+                          Link
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {soldBy.trim() && (
+                  <p className="mt-1 h-4 text-[11px] font-bold text-muted-foreground flex items-center gap-1">
+                    {selectedCustomer ? (
+                      <>
+                        <CheckCircle2 className="h-3 w-3 text-green-600" />
+                        Linked to customer record
+                      </>
+                    ) : (
+                      <>
+                        <UserCircle className="h-3 w-3" />
+                        New customer — saved on submit
+                      </>
+                    )}
+                  </p>
+                )}
               </div>
               <div>
                 <label className="block text-[10px] font-black uppercase text-muted-foreground mb-1.5">

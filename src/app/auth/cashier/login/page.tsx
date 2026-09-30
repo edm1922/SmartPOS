@@ -5,8 +5,8 @@ import * as bcrypt from 'bcryptjs';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
+import { Monitor } from 'lucide-react';
 import { LoginForm } from '@/components/ui/LoginForm';
-import { ThemeToggle } from '@/components/ui/ThemeToggle';
 
 export default function CashierLogin() {
   const [loading, setLoading] = useState(false);
@@ -69,7 +69,6 @@ export default function CashierLogin() {
       }
 
       console.log('Redirecting to cashier POS');
-      // Reset loading state before navigation
       setLoading(false);
 
       // Force a navigation using window.location for more reliable redirect
@@ -77,10 +76,10 @@ export default function CashierLogin() {
         window.location.href = '/cashier/pos';
       }
     } catch (error: any) {
-      console.error('Login error:', error); // Log the actual error for debugging
+      console.error('Login error:', error);
       console.log('=== CASHIER LOGIN PROCESS FAILED ===');
       setError(error.message || 'An unexpected error occurred');
-      setLoading(false); // Reset loading state on error
+      setLoading(false);
     }
 
     console.log('=== CASHIER LOGIN PROCESS COMPLETED ===');
@@ -89,11 +88,16 @@ export default function CashierLogin() {
   return (
     <LoginForm
       title="Cashier Login"
-      subtitle="Sign in with username to access the POS terminal"
+      subtitle="Sign in with your username to access POS terminal operations"
       onSubmit={handleLogin}
       loading={loading}
       error={error}
       showBackButton={true}
+      identifierLabel="Username"
+      identifierPlaceholder="Enter cashier username"
+      identifierType="text"
+      showForgotPasswordLink={false}
+      icon={<Monitor className="h-7 w-7" />}
     />
   );
 }

@@ -297,6 +297,28 @@ export const supabaseDB = {
     }
   },
 
+  async upsertProducts(rows: any[]) {
+    try {
+      // Return early if we're in a test environment
+      if (process.env.NODE_ENV === 'test') {
+        return { data: rows, error: null };
+      }
+
+      const { data, error } = await supabase
+        .from('products')
+        .upsert(rows, { onConflict: 'id' });
+
+      const errorMessage = handleSupabaseError(error, 'import products');
+      if (errorMessage) {
+        throw new Error(errorMessage);
+      }
+
+      return { data, error: null };
+    } catch (error: any) {
+      return { data: null, error: error.message };
+    }
+  },
+
   async getUserRole(userId: string) {
     try {
       // Return early if we're in a test environment

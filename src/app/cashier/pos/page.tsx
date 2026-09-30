@@ -627,7 +627,37 @@ export default function CashierPOS() {
       const { error } = await supabase.rpc('undo_transaction', {
         p_transaction_id: receiptData.id
       });
-      if (error) throw error;
+      if (error) {
+        console.warn('RPC undo_transaction failed, using fallback direct cancellation:', error);
+        const { data: items } = await supabase
+          .from('transaction_items')
+          .select('product_id, quantity')
+          .eq('transaction_id', receiptData.id);
+
+        if (items && items.length > 0) {
+          for (const item of items) {
+            if (item.product_id) {
+              const { data: prod } = await supabase
+                .from('products')
+                .select('stock_quantity')
+                .eq('id', item.product_id)
+                .single();
+              if (prod) {
+                await supabase
+                  .from('products')
+                  .update({ stock_quantity: (Number(prod.stock_quantity) || 0) + Number(item.quantity) })
+                  .eq('id', item.product_id);
+              }
+            }
+          }
+        }
+
+        const { error: updateErr } = await supabase
+          .from('transactions')
+          .update({ status: 'cancelled' })
+          .eq('id', receiptData.id);
+        if (updateErr) throw updateErr;
+      }
       setSuccessMessage('Transaction cancelled successfully.');
       setTimeout(() => setSuccessMessage(null), 3000);
       fetchProducts();
@@ -650,7 +680,34 @@ export default function CashierPOS() {
       const { error } = await supabase.rpc('undo_term_payment', {
         p_payment_id: termReceiptData.id
       });
-      if (error) throw error;
+      if (error) {
+        console.warn('RPC undo_term_payment failed, using fallback direct cancellation:', error);
+        const { data: allocs } = await supabase
+          .from('term_payment_allocations')
+          .select('transaction_id, amount')
+          .eq('term_payment_id', termReceiptData.id);
+
+        if (allocs && allocs.length > 0) {
+          for (const alloc of allocs) {
+            const { data: tx } = await supabase
+              .from('transactions')
+              .select('term_paid_amount')
+              .eq('id', alloc.transaction_id)
+              .single();
+            if (tx) {
+              const newAmount = Math.max(0, (Number(tx.term_paid_amount) || 0) - Number(alloc.amount));
+              await supabase
+                .from('transactions')
+                .update({ term_paid_amount: newAmount })
+                .eq('id', alloc.transaction_id);
+            }
+          }
+        }
+
+        await supabase.from('term_payment_allocations').delete().eq('term_payment_id', termReceiptData.id);
+        const { error: delErr } = await supabase.from('term_payments').delete().eq('id', termReceiptData.id);
+        if (delErr) throw delErr;
+      }
       setSuccessMessage('Payment cancelled successfully.');
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err: any) {

@@ -291,6 +291,20 @@ export default function Reports() {
     }
   };
 
+  const sourceBadge = (t: Transaction) =>
+    t.source === 'manual' ? (
+      <span
+        className="inline-flex items-center rounded-md border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-1.5 py-0.5 text-[10px] font-black uppercase text-amber-700 dark:text-amber-300"
+        title={t.manual_ref ? `BIR ${t.manual_ref}` : undefined}
+      >
+        Manual
+      </span>
+    ) : (
+      <span className="inline-flex items-center rounded-md border border-border px-1.5 py-0.5 text-[10px] font-black uppercase text-foreground">
+        Register
+      </span>
+    );
+
   const exportToCSV = () => {
     if (transactions.length === 0) return;
 
@@ -599,7 +613,7 @@ export default function Reports() {
               </div>
             ) : (
               <>
-                <div className="overflow-x-auto">
+                <div className="hidden md:block overflow-x-auto">
                   <Table>
                     <TableHeader className="bg-muted">
                       <TableRow>
@@ -619,18 +633,7 @@ export default function Reports() {
                             {formatDate(getTransactionDate(t))}
                           </TableCell>
                           <TableCell>
-                            {t.source === 'manual' ? (
-                              <span
-                                className="inline-flex items-center rounded-md border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-1.5 py-0.5 text-[10px] font-black uppercase text-amber-700 dark:text-amber-300"
-                                title={t.manual_ref ? `BIR ${t.manual_ref}` : undefined}
-                              >
-                                Manual
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center rounded-md border border-border px-1.5 py-0.5 text-[10px] font-black uppercase text-foreground">
-                                Register
-                              </span>
-                            )}
+                            {sourceBadge(t)}
                           </TableCell>
                           <TableCell>
                             <span className="block truncate max-w-[150px] text-sm">{t.cashier?.email || 'System'}</span>
@@ -687,12 +690,59 @@ export default function Reports() {
                       ))}
                     </TableBody>
                   </Table>
-                  {transactions.length === 0 && (
-                    <div className="px-6 py-20 text-center">
-                      <p className="text-sm text-muted-foreground">No transactions found for this period</p>
-                    </div>
-                  )}
                 </div>
+
+                {/* Mobile card rows */}
+                <div className="md:hidden divide-y divide-border">
+                  {transactions.slice(0, 50).map((t) => (
+                    <div key={t.id} className="px-4 py-3.5 space-y-2.5">
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="text-sm font-medium truncate">
+                          {t.is_down_payment
+                            ? `Downpayment from ${t.customer_name}`
+                            : (t.transaction_items?.map(getItemLabel).join(', ') || '-')}
+                        </p>
+                        <span className="text-sm font-semibold tabular-nums shrink-0">{formatPrice(t.total_amount)}</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-xs text-muted-foreground truncate">
+                          {formatDate(getTransactionDate(t))} · {t.cashier?.email || 'System'}
+                        </span>
+                        {sourceBadge(t)}
+                      </div>
+                      <div className="flex items-center justify-between gap-3 pt-2.5 border-t">
+                        <span className="inline-flex items-center capitalize text-xs gap-1.5">
+                          {getMethodIcon(t.payment_method)}
+                          {t.payment_method}
+                        </span>
+                        {t.source === 'manual' ? (
+                          <span
+                            title="Manual book entries can only be voided from the Approvals page"
+                            className="inline-flex items-center text-muted-foreground"
+                          >
+                            <Lock className="h-4 w-4" />
+                          </span>
+                        ) : (
+                          <Button
+                            onClick={() => handleOpenDeleteModal(t)}
+                            variant="outline"
+                            size="icon"
+                            title={`Delete ${t.is_down_payment ? 'downpayment' : 'transaction'} (requires admin password)`}
+                            className="h-8 w-8 rounded-md text-red-500 hover:text-red-700 hover:border-red-500/50"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {transactions.length === 0 && (
+                  <div className="px-6 py-20 text-center">
+                    <p className="text-sm text-muted-foreground">No transactions found for this period</p>
+                  </div>
+                )}
                 {transactions.length > 50 && (
                   <div className="px-6 py-3 border-t flex flex-col sm:flex-row items-center justify-between gap-2">
                     <p className="text-sm text-muted-foreground">

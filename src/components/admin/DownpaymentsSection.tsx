@@ -572,7 +572,8 @@ export default function DownpaymentsSection({
               )}
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <>
+            <div className="hidden md:block overflow-x-auto">
               <Table>
                 <TableHeader className="bg-muted">
                   <TableRow>
@@ -595,45 +596,56 @@ export default function DownpaymentsSection({
                       <TableCell className="text-sm text-muted-foreground">
                         {a.term_due_date ? formatDate(a.term_due_date) : '-'}
                       </TableCell>
-                      <TableCell>
-                        {a.source === 'manual' ? (
-                          <Badge
-                            variant="outline"
-                            className="text-amber-700 border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-800 text-[10px] font-black uppercase"
-                            title={a.manual_ref ? `BIR ${a.manual_ref}` : undefined}
-                          >
-                            Manual
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline" className="text-[10px] font-black uppercase">
-                            Register
-                          </Badge>
-                        )}
-                      </TableCell>
+                      <TableCell>{sourceBadge(a)}</TableCell>
                       <TableCell className="text-right tabular-nums">{formatPrice(a.total_amount)}</TableCell>
                       <TableCell className="text-right tabular-nums">{formatPrice(a.down_payment)}</TableCell>
                       <TableCell className="text-right tabular-nums">{formatPrice(a.term_paid_amount)}</TableCell>
                       <TableCell className="text-right font-semibold tabular-nums">
                         {formatPrice(a.outstanding)}
                       </TableCell>
-                      <TableCell>
-                        {a.outstanding <= 0 ? (
-                          <Badge className="text-green-700 border-green-200 bg-green-50 dark:bg-green-900/20 dark:text-green-300 dark:border-green-800">
-                            Paid
-                          </Badge>
-                        ) : isOverdueRow(a) ? (
-                          <Badge className="text-amber-700 border-amber-200 bg-amber-50 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-800">
-                            Overdue
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline">Open</Badge>
-                        )}
-                      </TableCell>
+                      <TableCell>{statusBadge(a)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
             </div>
+
+            {/* Mobile card rows */}
+            <div className="md:hidden divide-y divide-border">
+              {filteredAccounts.map((a) => (
+                <div key={a.id} className="px-4 py-3.5 space-y-2.5">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-sm font-semibold truncate">{a.customer_name}</span>
+                    {statusBadge(a)}
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-xs text-muted-foreground">
+                      Due {a.term_due_date ? formatDate(a.term_due_date) : '-'}
+                    </span>
+                    {sourceBadge(a)}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 pt-2.5 border-t">
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">Total</p>
+                      <p className="text-sm font-medium tabular-nums">{formatPrice(a.total_amount)}</p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">Down</p>
+                      <p className="text-sm font-medium tabular-nums">{formatPrice(a.down_payment)}</p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">Collected</p>
+                      <p className="text-sm font-medium tabular-nums">{formatPrice(a.term_paid_amount)}</p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">Outstanding</p>
+                      <p className="text-sm font-semibold tabular-nums">{formatPrice(a.outstanding)}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            </>
           )}
         </CardContent>
       </Card>
@@ -660,7 +672,8 @@ export default function DownpaymentsSection({
               <p className="text-sm font-medium text-muted-foreground">No collections recorded in this period</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <>
+            <div className="hidden md:block overflow-x-auto">
               <Table>
                 <TableHeader className="bg-muted">
                   <TableRow>
@@ -713,6 +726,43 @@ export default function DownpaymentsSection({
                 </TableBody>
               </Table>
             </div>
+
+            {/* Mobile card rows */}
+            <div className="md:hidden divide-y divide-border">
+              {collections.map((c) => (
+                <div key={c.id} className="px-4 py-3.5 space-y-2">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{c.customer_name}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{formatDateTime(c.created_at)}</p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-sm font-semibold tabular-nums">{formatPrice(c.amount)}</span>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-red-600"
+                        title="Undo payment"
+                        onClick={() => setPendingUndo(c)}
+                      >
+                        <RotateCcw className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-xs text-muted-foreground">By {c.collector}</span>
+                    <span className="inline-flex items-center gap-1.5 capitalize text-xs">
+                      {getMethodIcon(c.payment_method)}
+                      {c.payment_method}
+                    </span>
+                  </div>
+                  {c.target_labels.length > 0 && (
+                    <p className="text-xs text-muted-foreground">Allocated to {c.target_labels.join(', ')}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+            </>
           )}
         </CardContent>
       </Card>
@@ -915,6 +965,39 @@ function isOverdueRow(a: AccountRow) {
   const dueDate = new Date(year, month - 1, day);
   dueDate.setHours(23, 59, 59, 999);
   return dueDate < new Date();
+}
+
+function sourceBadge(a: AccountRow) {
+  if (a.source === 'manual') {
+    return (
+      <Badge
+        variant="outline"
+        className="text-amber-700 border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-800 text-[10px] font-black uppercase"
+        title={a.manual_ref ? `BIR ${a.manual_ref}` : undefined}
+      >
+        Manual
+      </Badge>
+    );
+  }
+  return <Badge variant="outline" className="text-[10px] font-black uppercase">Register</Badge>;
+}
+
+function statusBadge(a: AccountRow) {
+  if (a.outstanding <= 0) {
+    return (
+      <Badge className="text-green-700 border-green-200 bg-green-50 dark:bg-green-900/20 dark:text-green-300 dark:border-green-800">
+        Paid
+      </Badge>
+    );
+  }
+  if (isOverdueRow(a)) {
+    return (
+      <Badge className="text-amber-700 border-amber-200 bg-amber-50 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-800">
+        Overdue
+      </Badge>
+    );
+  }
+  return <Badge variant="outline">Open</Badge>;
 }
 
 function formatDate(dateStr: string) {

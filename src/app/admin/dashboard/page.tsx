@@ -19,9 +19,12 @@ export default function AdminDashboard() {
   });
   const [recentActivity, setRecentActivity] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   useEffect(() => {
     fetchDashboardData();
+    const id = setInterval(() => fetchDashboardData(true), 30000);
+    return () => clearInterval(id);
   }, []);
 
   const fetchDashboardData = async (silent = false) => {
@@ -101,6 +104,7 @@ export default function AdminDashboard() {
       ].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).slice(0, 5);
 
       setRecentActivity(activity);
+      setLastUpdated(new Date());
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
     } finally {
@@ -111,7 +115,7 @@ export default function AdminDashboard() {
   const todayLabel = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 
   const secondaryMetrics = [
-    { label: 'Total Revenue', value: formatPrice(stats.totalRevenue) },
+    { label: 'Total Revenue', value: formatPrice(stats.totalRevenue), live: true },
     { label: 'Products', value: String(stats.productCount) },
     { label: 'Active Staff', value: String(stats.cashierCount) },
   ];
@@ -170,6 +174,12 @@ export default function AdminDashboard() {
                 <p className="text-3xl font-bold tracking-tight tabular-nums">{metric.value}</p>
               )}
             </div>
+            {metric.live && !loading && (
+              <p className="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground tabular-nums">
+                <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" aria-hidden="true" />
+                Updated {lastUpdated ? lastUpdated.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) : '—'}
+              </p>
+            )}
           </div>
         ))}
       </section>

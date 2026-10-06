@@ -906,6 +906,7 @@ const perTxAlloc: Record<string, number> = {};
       const { data, error } = await supabase
         .from('customers')
         .select('*')
+        .eq('is_manual', true)
         .order('name');
       if (error) throw error;
       const result: any[] = [];
@@ -923,8 +924,9 @@ const perTxAlloc: Record<string, number> = {};
         const totalBalance = Math.max(0, termBalance) + (c.balance_override || 0);
         result.push({ ...c, term_balance: Math.max(0, termBalance), total_balance: totalBalance });
       }
-      result.sort((a, b) => b.total_balance - a.total_balance);
-      setCustomerListData(result);
+      const filtered = result.filter((c) => c.total_balance > 0);
+      filtered.sort((a, b) => b.total_balance - a.total_balance);
+      setCustomerListData(filtered);
     } catch (err) {
       console.error('Error fetching customer list:', err);
     } finally {
@@ -958,7 +960,7 @@ const perTxAlloc: Record<string, number> = {};
       } else {
         const { error } = await supabase
           .from('customers')
-          .insert(payload);
+          .insert({ ...payload, is_manual: true });
         if (error) throw error;
       }
       setIsCustomerFormOpen(false);
@@ -976,9 +978,31 @@ const perTxAlloc: Record<string, number> = {};
     }
   };
 
-  const deleteCustomer = async (id: string) => {
+  const deleteCustomer = async (c: any) => {
+    if (!c) return;
+    const { id, name } = c;
     if (!confirm('Are you sure you want to delete this customer?')) return;
     try {
+      const { count: txCount, error: txError } = await supabase
+        .from('transactions')
+        .select('id', { count: 'exact', head: true })
+        .eq('customer_id', id);
+      if (txError) throw txError;
+
+      const { count: payCount, error: payError } = await supabase
+        .from('term_payments')
+        .select('id', { count: 'exact', head: true })
+        .eq('customer_id', id);
+      if (payError) throw payError;
+
+      if ((txCount || 0) > 0 || (payCount || 0) > 0) {
+        const parts: string[] = [];
+        if ((txCount || 0) > 0) parts.push(`${txCount} transaction${txCount === 1 ? '' : 's'}`);
+        if ((payCount || 0) > 0) parts.push(`${payCount} term payment${payCount === 1 ? '' : 's'}`);
+        setError(`Cannot delete ${name} — they have ${parts.join(' and ')} on record.`);
+        return;
+      }
+
       const { error } = await supabase
         .from('customers')
         .delete()
@@ -1995,7 +2019,7 @@ const perTxAlloc: Record<string, number> = {};
                           variant="ghost"
                           size="sm"
                           className="h-8 w-8 p-0 text-muted-foreground hover:text-red-600"
-                          onClick={() => deleteCustomer(c.id)}
+                          onClick={() => deleteCustomer(c)}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>

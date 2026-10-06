@@ -109,6 +109,8 @@ export default function CashierPOS() {
   const [customerListData, setCustomerListData] = useState<any[]>([]);
   const [customerListLoading, setCustomerListLoading] = useState(false);
   const [customerSearchQuery, setCustomerSearchQuery] = useState('');
+  const [customerSearchResults, setCustomerSearchResults] = useState<any[]>([]);
+  const [customerSearchLoading, setCustomerSearchLoading] = useState(false);
   const [isCustomerFormOpen, setIsCustomerFormOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<any>(null);
   const [cfName, setCfName] = useState('');
@@ -900,6 +902,25 @@ const perTxAlloc: Record<string, number> = {};
     }
   };
 
+  const enrichWithBalances = async (rows: any[]): Promise<any[]> => {
+    const result: any[] = [];
+    for (const c of rows) {
+      const { data: txs } = await supabase
+        .from('transactions')
+        .select('term_remaining_balance, term_paid_amount')
+        .eq('customer_id', c.id)
+        .eq('payment_method', 'term')
+        .eq('status', 'completed')
+        .is('voided_at', null);
+      const termBalance = (txs || []).reduce((sum, tx) => {
+        return sum + ((tx.term_remaining_balance || 0) - (tx.term_paid_amount || 0));
+      }, 0);
+      const totalBalance = Math.max(0, termBalance) + (c.balance_override || 0);
+      result.push({ ...c, term_balance: Math.max(0, termBalance), total_balance: totalBalance });
+    }
+    return result;
+  };
+
   const fetchCustomerList = async () => {
     setCustomerListLoading(true);
     try {
@@ -909,22 +930,8 @@ const perTxAlloc: Record<string, number> = {};
         .eq('is_manual', true)
         .order('name');
       if (error) throw error;
-      const result: any[] = [];
-      for (const c of data || []) {
-        const { data: txs } = await supabase
-          .from('transactions')
-          .select('term_remaining_balance, term_paid_amount')
-          .eq('customer_id', c.id)
-          .eq('payment_method', 'term')
-          .eq('status', 'completed')
-          .is('voided_at', null);
-        const termBalance = (txs || []).reduce((sum, tx) => {
-          return sum + ((tx.term_remaining_balance || 0) - (tx.term_paid_amount || 0));
-        }, 0);
-        const totalBalance = Math.max(0, termBalance) + (c.balance_override || 0);
-        result.push({ ...c, term_balance: Math.max(0, termBalance), total_balance: totalBalance });
-      }
-      const filtered = result.filter((c) => c.total_balance > 0);
+      const enriched = await enrichWithBalances(data || []);
+      const filtered = enriched.filter((c) => c.total_balance > 0);
       filtered.sort((a, b) => b.total_balance - a.total_balance);
       setCustomerListData(filtered);
     } catch (err) {
@@ -933,6 +940,105 @@ const perTxAlloc: Record<string, number> = {};
       setCustomerListLoading(false);
     }
   };
+
+  // Search exception: typing in the Customers modal looks up the full customers
+  // table (auto + manual, any balance) so auto-created customers stay findable
+  // on demand, while the default list remains manual + balance only.
+  const searchAllCustomers = async (q: string) => {
+    const query = q.trim();
+    if (!query) {
+      setCustomerSearchResults([]);
+      return;
+    }
+    setCustomerSearchLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('customers')
+        .select('*')
+        .or(`name.ilike.%${query}%,address.ilike.%${query}%`)
+        .order('name')
+        .limit(25);
+      if (error) throw error;
+      const enriched = await enrichWithBalances(data || []);
+      enriched.sort((a, b) => b.total_balance - a.total_balance);
+      setCustomerSearchResults(enriched);
+    } catch (err) {
+      console.error('Error searching customers:', err);
+      setCustomerSearchResults([]);
+    } finally {
+      setCustomerSearchLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const query = customerSearchQuery.trim();
+    if (!query) {
+      setCustomerSearchResults([]);
+      setCustomerSearchLoading(false);
+      return;
+    }
+    const timer = setTimeout(() => searchAllCustomers(query), 250);
+    return () => clearTimeout(timer);
+  }, [customerSearchQuery]);
+
+  const renderCustomerRow = (c: any) => (
+    <div key={c.id} className="bg-card rounded-xl px-5 py-4 border border-border hover:border-muted transition-colors">
+      <div className="flex items-start justify-between">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <p className="font-bold text-sm truncate">{c.name}</p>
+            {c.tin_number && (
+              <span className="text-[10px] font-bold text-muted-foreground bg-muted px-2 py-0.5 rounded-full shrink-0">TIN: {c.tin_number}</span>
+            )}
+          </div>
+          {c.address && (
+            <p className="text-xs text-muted-foreground truncate">{c.address}</p>
+          )}
+          <div className="flex items-center gap-3 mt-2">
+            <div>
+              <p className="text-[10px] font-bold text-muted-foreground uppercase">Term Balance</p>
+              <p className="text-xs font-bold text-orange-600">{formatPrice(c.term_balance)}</p>
+            </div>
+            {(c.balance_override || 0) !== 0 && (
+              <div>
+                <p className="text-[10px] font-bold text-muted-foreground uppercase">Override</p>
+                <p className="text-xs font-bold text-muted-foreground">{formatPrice(c.balance_override || 0)}</p>
+              </div>
+            )}
+            <div>
+              <p className="text-[10px] font-bold text-muted-foreground uppercase">Total Balance</p>
+              <p className={`text-xs font-bold ${c.total_balance > 0 ? 'text-red-600' : 'text-green-600'}`}>{formatPrice(c.total_balance)}</p>
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-1 ml-3 shrink-0">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
+            onClick={() => {
+              setEditingCustomer(c);
+              setCfName(c.name || '');
+              setCfAddress(c.address || '');
+              setCfTinNumber(c.tin_number || '');
+              setCfBalanceOverride(String(c.balance_override || 0));
+              setIsCustomerFormOpen(true);
+            }}
+          >
+            <Pencil className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 w-8 p-0 text-muted-foreground hover:text-red-600"
+            onClick={() => deleteCustomer(c)}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
 
   const saveCustomer = async () => {
     if (!cfName.trim()) {
@@ -1952,7 +2058,22 @@ const perTxAlloc: Record<string, number> = {};
             </Button>
           </div>
 
-          {customerListLoading ? (
+          {customerSearchQuery.trim() ? (
+            customerSearchLoading ? (
+              <div className="text-center py-12 text-muted-foreground">
+                <p className="text-sm font-bold">Searching customers...</p>
+              </div>
+            ) : customerSearchResults.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground">
+                <Users className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                <p className="text-sm font-bold">No customers match your search</p>
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+                {customerSearchResults.map(renderCustomerRow)}
+              </div>
+            )
+          ) : customerListLoading ? (
             <div className="text-center py-12 text-muted-foreground">
               <p className="text-sm font-bold">Loading customers...</p>
             </div>
@@ -1963,70 +2084,7 @@ const perTxAlloc: Record<string, number> = {};
             </div>
           ) : (
             <div className="space-y-2 max-h-[60vh] overflow-y-auto">
-              {customerListData
-                .filter((c) => {
-                  if (!customerSearchQuery.trim()) return true;
-                  const q = customerSearchQuery.toLowerCase();
-                  return (c.name || '').toLowerCase().includes(q) || (c.address || '').toLowerCase().includes(q);
-                })
-                .map((c) => (
-                  <div key={c.id} className="bg-card rounded-xl px-5 py-4 border border-border hover:border-muted transition-colors">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <p className="font-bold text-sm truncate">{c.name}</p>
-                          {c.tin_number && (
-                            <span className="text-[10px] font-bold text-muted-foreground bg-muted px-2 py-0.5 rounded-full shrink-0">TIN: {c.tin_number}</span>
-                          )}
-                        </div>
-                        {c.address && (
-                          <p className="text-xs text-muted-foreground truncate">{c.address}</p>
-                        )}
-                        <div className="flex items-center gap-3 mt-2">
-                          <div>
-                            <p className="text-[10px] font-bold text-muted-foreground uppercase">Term Balance</p>
-                            <p className="text-xs font-bold text-orange-600">{formatPrice(c.term_balance)}</p>
-                          </div>
-                          {(c.balance_override || 0) !== 0 && (
-                            <div>
-                              <p className="text-[10px] font-bold text-muted-foreground uppercase">Override</p>
-                              <p className="text-xs font-bold text-muted-foreground">{formatPrice(c.balance_override || 0)}</p>
-                            </div>
-                          )}
-                          <div>
-                            <p className="text-[10px] font-bold text-muted-foreground uppercase">Total Balance</p>
-                            <p className={`text-xs font-bold ${c.total_balance > 0 ? 'text-red-600' : 'text-green-600'}`}>{formatPrice(c.total_balance)}</p>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1 ml-3 shrink-0">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
-                          onClick={() => {
-                            setEditingCustomer(c);
-                            setCfName(c.name || '');
-                            setCfAddress(c.address || '');
-                            setCfTinNumber(c.tin_number || '');
-                            setCfBalanceOverride(String(c.balance_override || 0));
-                            setIsCustomerFormOpen(true);
-                          }}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 w-8 p-0 text-muted-foreground hover:text-red-600"
-                          onClick={() => deleteCustomer(c)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+              {customerListData.map(renderCustomerRow)}
             </div>
           )}
         </div>

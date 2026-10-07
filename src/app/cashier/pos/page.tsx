@@ -1380,19 +1380,60 @@ const perTxAlloc: Record<string, number> = {};
             )}
             
             {['card', 'mobile', 'cheque'].includes(paymentMethod) && (
-              <div className="bg-muted/50 p-6 rounded-xl border border-border">
-                <label className="block text-[11px] font-bold uppercase text-muted-foreground mb-3 text-center">Reference / Trace Number</label>
-                <div className="relative">
-                  <Input 
-                    type="text" 
-                    className="h-16 text-center text-2xl font-bold bg-card rounded-lg" 
-                    placeholder={`Enter ${paymentMethod} reference...`} 
-                    value={referenceNumber} 
-                    onChange={(e) => setReferenceNumber(e.target.value)} 
-                    autoFocus 
-                  />
+              <>
+                <div className="bg-muted/50 p-6 rounded-xl border border-border">
+                  <label className="block text-[11px] font-bold uppercase text-muted-foreground mb-3 text-center">Reference / Trace Number</label>
+                  <div className="relative">
+                    <Input 
+                      type="text" 
+                      className="h-16 text-center text-2xl font-bold bg-card rounded-lg" 
+                      placeholder={`Enter ${paymentMethod} reference...`} 
+                      value={referenceNumber} 
+                      onChange={(e) => setReferenceNumber(e.target.value)} 
+                      autoFocus 
+                    />
+                  </div>
                 </div>
-              </div>
+
+                <div className="bg-muted/50 p-4 rounded-xl border border-border">
+                  <label className="block text-[11px] font-bold uppercase text-muted-foreground mb-2 text-center">Link to Existing Customer</label>
+                  <div className="relative">
+                    <Input
+                      type="text"
+                      className="h-12 text-center text-base font-bold bg-card rounded-lg"
+                      placeholder="Search customer..."
+                      value={termCustSearch}
+                      onChange={(e) => {
+                        setTermCustSearch(e.target.value);
+                        searchTermCustomer(e.target.value);
+                        setTermCustSelected(null);
+                        setTermCustOutstanding(0);
+                      }}
+                    />
+                    {termCustResults.length > 0 && !termCustSelected && (
+                      <div className="absolute top-full left-0 right-0 bg-popover border border-border rounded-xl shadow-xl z-50 mt-1 max-h-48 overflow-y-auto">
+                        {termCustResults.map((c) => (
+                          <button
+                            key={c.id}
+                            className="w-full text-left px-4 py-3 text-sm font-bold hover:bg-muted transition-colors border-b border-border last:border-0"
+                            onClick={() => selectTermCustomer(c)}
+                          >
+                            {c.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  {termCustSelected && (
+                    <div className="mt-3 bg-card rounded-xl p-3 border border-border">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-bold text-foreground">{termCustSelected.name}</span>
+                        <button className="text-[10px] text-muted-foreground underline" onClick={() => { setTermCustSelected(null); setTermCustSearch(''); setTermCustOutstanding(0); }}>Clear</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </>
             )}
 
             {paymentMethod === 'term' && (

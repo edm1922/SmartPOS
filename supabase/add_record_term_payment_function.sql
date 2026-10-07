@@ -48,7 +48,7 @@ DECLARE
   v_payment_id UUID;
   v_customer   TEXT;
   v_remaining  DECIMAL := p_amount;
-  v_alloc      RECORD;
+  v_alloc      JSONB;
   v_tx_owed    DECIMAL;
   v_tx_paid    DECIMAL;
   v_take       DECIMAL;

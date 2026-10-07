@@ -80,16 +80,24 @@ export function DailyReportModal({ isOpen, onClose, cashierId, cashierName }: Da
         
         let total = 0, cash = 0, card = 0, mobile = 0, cheque = 0, term = 0;
         data.forEach(tx => {
-          total += tx.total_amount;
-          if (tx.payment_method === 'cash') cash += tx.total_amount;
-          if (tx.payment_method === 'card') card += tx.total_amount;
-          if (tx.payment_method === 'mobile') mobile += tx.total_amount;
-          if (tx.payment_method === 'cheque') cheque += tx.total_amount;
-          if (tx.payment_method === 'term') term += tx.total_amount;
+          const amt = Number(tx.total_amount || 0);
+          if (tx.payment_method === 'term') {
+            // Unpaid term principal is NOT gross sales. Only the down payment
+            // collected at the time of sale counts here; later payments arrive
+            // through the term_payments query above.
+            total += Number(tx.down_payment || 0);
+            term += amt;
+          } else {
+            total += amt;
+            if (tx.payment_method === 'cash') cash += amt;
+            if (tx.payment_method === 'card') card += amt;
+            if (tx.payment_method === 'mobile') mobile += amt;
+            if (tx.payment_method === 'cheque') cheque += amt;
+          }
         });
 
         setSummary({
-          totalAmount: total,
+          totalAmount: total + termPaymentsTotal,
           cashAmount: cash,
           cardAmount: card,
           mobileAmount: mobile,

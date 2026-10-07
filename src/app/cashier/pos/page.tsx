@@ -38,6 +38,7 @@ import {
 import { PrintableReceipt } from '@/components/ui/PrintableReceipt';
 import { DailyReportModal } from '@/components/cashier/DailyReportModal';
 import { ManualEntryModal } from '@/components/cashier/ManualEntryModal';
+import { CustomerDetailModal } from '@/components/admin/CustomerDetailModal';
 
 interface Product {
   id: string;
@@ -106,6 +107,7 @@ export default function CashierPOS() {
   const [termCustOutstanding, setTermCustOutstanding] = useState(0);
 
   const [isCustomerListOpen, setIsCustomerListOpen] = useState(false);
+  const [customerDetailTarget, setCustomerDetailTarget] = useState<any>(null);
   const [customerListData, setCustomerListData] = useState<any[]>([]);
   const [customerListLoading, setCustomerListLoading] = useState(false);
   const [customerSearchQuery, setCustomerSearchQuery] = useState('');
@@ -981,8 +983,20 @@ const perTxAlloc: Record<string, number> = {};
     return () => clearTimeout(timer);
   }, [customerSearchQuery]);
 
+  // Opens the customer's full account (register + approved manual transactions,
+  // term payments) - the same view the admin uses. The list modal is closed
+  // first so the two z-50 modals do not stack and both react to Escape.
+  const openCustomerDetail = (c: any) => {
+    setCustomerDetailTarget(c);
+    setIsCustomerListOpen(false);
+  };
+
   const renderCustomerRow = (c: any) => (
-    <div key={c.id} className="bg-card rounded-xl px-5 py-4 border border-border hover:border-muted transition-colors">
+    <div
+      key={c.id}
+      onClick={() => openCustomerDetail(c)}
+      className="bg-card rounded-xl px-5 py-4 border border-border hover:border-muted transition-colors cursor-pointer"
+    >
       <div className="flex items-start justify-between">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
@@ -1016,7 +1030,8 @@ const perTxAlloc: Record<string, number> = {};
             variant="ghost"
             size="sm"
             className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
-            onClick={() => {
+            onClick={(e) => {
+              e.stopPropagation();
               setEditingCustomer(c);
               setCfName(c.name || '');
               setCfAddress(c.address || '');
@@ -1031,7 +1046,7 @@ const perTxAlloc: Record<string, number> = {};
             variant="ghost"
             size="sm"
             className="h-8 w-8 p-0 text-muted-foreground hover:text-red-600"
-            onClick={() => deleteCustomer(c)}
+            onClick={(e) => { e.stopPropagation(); deleteCustomer(c); }}
           >
             <Trash2 className="h-4 w-4" />
           </Button>
@@ -2089,6 +2104,15 @@ const perTxAlloc: Record<string, number> = {};
           )}
         </div>
       </Modal>
+
+      <CustomerDetailModal
+        isOpen={!!customerDetailTarget}
+        customer={customerDetailTarget}
+        onClose={() => {
+          setCustomerDetailTarget(null);
+          setIsCustomerListOpen(true);
+        }}
+      />
 
       <Modal isOpen={isCustomerFormOpen} onClose={() => { setIsCustomerFormOpen(false); setEditingCustomer(null); }} title={editingCustomer ? 'Edit Customer' : 'Add Customer'} size="md">
         <div className="p-6">

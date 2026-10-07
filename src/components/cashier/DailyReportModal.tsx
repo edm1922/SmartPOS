@@ -36,18 +36,30 @@ export function DailyReportModal({ isOpen, onClose, cashierId, cashierName }: Da
   const fetchDailyData = async () => {
     setLoading(true);
     try {
+      const now = new Date();
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       
       const tomorrow = new Date(today);
       tomorrow.setDate(tomorrow.getDate() + 1);
 
+      // transaction_date is the date of record (the BIR receipt date for manual
+      // entries, the sale day for register rows), matching the admin Reports
+      // page. Built from local time so a late-evening sale is not pushed into
+      // the next day by a UTC conversion.
+      const todayDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
       const { data, error } = await supabase
         .from('transactions')
         .select('*')
-        .eq('cashier_id', cashierId)
-        .gte('created_at', today.toISOString())
-        .lt('created_at', tomorrow.toISOString())
+        // Approved manual BIR entries deliberately carry cashier_id = NULL and
+        // are attributed through recorded_by_cashier_id, so both columns must be
+        // matched or the cashier's own manual sales would be missing from their
+        // gross sales. Voided rows are excluded so a voided entry cannot inflate
+        // the totals.
+        .eq('transaction_date', todayDate)
+        .or(`cashier_id.eq.${cashierId},recorded_by_cashier_id.eq.${cashierId}`)
+        .is('voided_at', null)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -202,7 +214,14 @@ export function DailyReportModal({ isOpen, onClose, cashierId, cashierName }: Da
                         {transactions.map((tx) => (
                           <tr key={tx.id} className="border-b">
                             <td className="px-4 py-2 text-muted-foreground">{new Date(tx.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}</td>
-                            <td className="px-4 py-2 font-mono text-xs">{tx.id.substring(0, 8)}</td>
+                            <td className="px-4 py-2 font-mono text-xs">
+                              {tx.id.substring(0, 8)}
+                              {tx.source === 'manual' && (
+                                <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">
+                                  Manual{tx.manual_ref ? ` · ${tx.manual_ref}` : ''}
+                                </span>
+                              )}
+                            </td>
                             <td className="px-4 py-2 uppercase text-[10px] font-bold">{tx.payment_method}</td>
                             <td className="px-4 py-2 text-right font-bold tabular-nums">{formatPrice(tx.total_amount)}</td>
                           </tr>
